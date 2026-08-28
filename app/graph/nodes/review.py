@@ -1,7 +1,7 @@
 from langgraph.types import interrupt
 
 from app.graph.state import DiagnosisState
-from app.schemas.diagnosis import DoctorReviewRequest
+from app.schemas.diagnosis import GraphDoctorReview
 
 
 async def doctor_review_node(state: DiagnosisState) -> dict:
@@ -15,6 +15,5 @@ async def doctor_review_node(state: DiagnosisState) -> dict:
         "allowed_actions": ["approve", "edit", "reject"],
     }
     resumed = interrupt(payload)
-    review = DoctorReviewRequest.model_validate(resumed)
+    review = GraphDoctorReview.model_validate(resumed)
     return {"current_stage": "doctor_review", "doctor_review": review.model_dump(mode="json")}
-

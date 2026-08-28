@@ -19,7 +19,7 @@ async def test_specialist_routes(question: str, intent: str, specialty: str) -> 
         initial_state(case_id=thread_id, thread_id=thread_id, patient_id="DEMO-P", question=question),
         graph_config(thread_id),
     )
-    assert result["status"] == "PENDING_REVIEW"
+    assert result["status"] == "WAITING_REVIEW"
     assert result["intent"] == intent
     assert result["specialist_opinions"][0]["specialty"] == specialty
     assert result["final_assessment"] if "final_assessment" in result else True
@@ -45,4 +45,3 @@ async def test_emergency_rule_overrides_model_risk() -> None:
     )
     assert result["risk_level"] == "emergency"
     assert result["draft_assessment"]["risk_level"] == "emergency"
-

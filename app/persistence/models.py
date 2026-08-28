@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -24,6 +24,8 @@ class Patient(Base, TimestampMixin):
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
     summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    data_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="demo", index=True)
+    source_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="doctor_web", index=True)
 
 
 class Doctor(Base, TimestampMixin):
@@ -103,6 +105,7 @@ class MedicalCase(Base, TimestampMixin):
     question: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(String(32), default="CREATED", index=True)
     risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    source_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="doctor_web", index=True)
     assessments: Mapped[list["MedicalAssessment"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
     )
@@ -119,5 +122,19 @@ class MedicalAssessment(Base, TimestampMixin):
     review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     reviewer_id: Mapped[str | None] = mapped_column(ForeignKey("doctors.id"), nullable=True)
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     case: Mapped[MedicalCase] = relationship(back_populates="assessments")
 
+
+class KnowledgeDocument(Base, TimestampMixin):
+    __tablename__ = "knowledge_documents"
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    source: Mapped[str] = mapped_column(String(500), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True)
+    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

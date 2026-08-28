@@ -13,6 +13,15 @@ class PossibleCondition(BaseModel):
     confidence: float = Field(ge=0, le=1)
 
 
+class SpecialistOpinion(BaseModel):
+    specialty: Literal["cardiology", "gastroenterology"]
+    summary: str
+    key_findings: list[str] = Field(default_factory=list)
+    differential_directions: list[PossibleCondition] = Field(default_factory=list)
+    recommended_tests: list[str] = Field(default_factory=list)
+    red_flags: list[str] = Field(default_factory=list)
+
+
 class DiagnosisResult(BaseModel):
     clinical_summary: str
     key_findings: list[str] = Field(default_factory=list)
@@ -22,18 +31,10 @@ class DiagnosisResult(BaseModel):
     recommended_tests: list[str] = Field(default_factory=list)
     recommended_department: str = "全科/内科"
     risk_level: RiskLevel = "low"
+    specialist_opinions: list[SpecialistOpinion] = Field(default_factory=list)
     evidence: list[KnowledgeEvidence] = Field(default_factory=list)
     rag_enabled: bool = False
     disclaimer: str = "本结果仅用于医生辅助决策，不能替代医生的临床诊断。"
-
-
-class SpecialistOpinion(BaseModel):
-    specialty: Literal["cardiology", "gastroenterology"]
-    summary: str
-    key_findings: list[str] = Field(default_factory=list)
-    differential_directions: list[PossibleCondition] = Field(default_factory=list)
-    recommended_tests: list[str] = Field(default_factory=list)
-    red_flags: list[str] = Field(default_factory=list)
 
 
 class DiagnosisCreateRequest(BaseModel):
@@ -51,13 +52,26 @@ class DiagnosisCreateResponse(BaseModel):
 
 
 class DoctorReviewRequest(BaseModel):
+    action: Literal["approve", "edit", "reject"]
+    expected_version: int = Field(ge=1)
+    edited_result: DiagnosisResult | None = None
+    reason: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_edit(self) -> "DoctorReviewRequest":
+        if self.action == "edit" and self.edited_result is None:
+            raise ValueError("action 为 edit 时必须提供 edited_result")
+        return self
+
+
+class GraphDoctorReview(BaseModel):
     reviewer_id: str = Field(min_length=1, max_length=64)
     action: Literal["approve", "edit", "reject"]
     edited_result: DiagnosisResult | None = None
     reason: str | None = Field(default=None, max_length=2000)
 
     @model_validator(mode="after")
-    def validate_edit(self) -> "DoctorReviewRequest":
+    def validate_edit(self) -> "GraphDoctorReview":
         if self.action == "edit" and self.edited_result is None:
             raise ValueError("action 为 edit 时必须提供 edited_result")
         return self
@@ -73,6 +87,9 @@ class CaseResponse(BaseModel):
     ai_result: DiagnosisResult | None = None
     doctor_result: DiagnosisResult | None = None
     review_status: str | None = None
+    assessment_version: int = 1
+    reviewer_id: str | None = None
+    review_reason: str | None = None
     created_at: str
     updated_at: str
 

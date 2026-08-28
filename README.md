@@ -6,6 +6,8 @@
 
 ## 你可以从哪里开始读代码
 
+完整业务流程、代码技术架构、请求时序、HITL 恢复和 Checkpoint 数据流见 [`docs/business-technical-flow.md`](docs/business-technical-flow.md)。
+
 建议按以下顺序阅读：
 
 1. `app/graph/workflow.py`：先看整个诊断流程和条件边。

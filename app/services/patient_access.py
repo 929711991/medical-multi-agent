@@ -10,8 +10,5 @@ class PatientAccessService:
         self.repository = PatientRepository(session)
 
     async def can_access_demo_patient(self, patient_id: str) -> bool:
-        # V1 没有完整身份系统，只允许显式标记的虚构 DEMO 编号。
-        if not patient_id.startswith("DEMO-"):
-            return False
-        return await self.repository.exists(patient_id)
+        return await self.repository.data_scope(patient_id) == "demo"
 

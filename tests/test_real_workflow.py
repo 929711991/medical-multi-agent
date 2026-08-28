@@ -22,6 +22,6 @@ async def test_real_llm_mcp_graph_reaches_doctor_review() -> None:
             ),
             graph_config(thread_id),
         )
-        assert result["status"] == "PENDING_REVIEW"
+        assert result["status"] == "WAITING_REVIEW"
         assert result["intent"] == "cardiology"
         assert result["draft_assessment"]

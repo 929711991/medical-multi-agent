@@ -14,7 +14,7 @@ async def _interrupt(graph, thread_id: str):
     )
     state = await graph.aget_state(graph_config(thread_id))
     assert state.next == ("doctor_review",)
-    assert result["status"] == "PENDING_REVIEW"
+    assert result["status"] == "WAITING_REVIEW"
     return result
 
 
@@ -80,4 +80,3 @@ async def test_rebuild_graph_can_resume_same_checkpoint() -> None:
         Command(resume={"reviewer_id": "DEMO-D", "action": "approve"}), graph_config("restart")
     )
     assert result["status"] == "FINAL"
-

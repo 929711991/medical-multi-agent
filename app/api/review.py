@@ -3,10 +3,12 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException
 from langgraph.types import Command
 
+from app.api.auth import get_current_doctor
 from app.api.dependencies import get_graph
 from app.graph.workflow import graph_config
 from app.persistence.database import get_session_factory
-from app.persistence.repositories import CaseRepository, DoctorRepository
+from app.persistence.repositories import CaseRepository
+from app.schemas.auth import DoctorIdentity
 from app.schemas.diagnosis import CaseResponse, DiagnosisResult, DoctorReviewRequest
 
 router = APIRouter(tags=["review"])
@@ -14,26 +16,41 @@ logger = logging.getLogger(__name__)
 
 
 @router.post("/cases/{case_id}/review", response_model=CaseResponse)
-async def review_case(case_id: str, payload: DoctorReviewRequest, graph=Depends(get_graph)) -> CaseResponse:
+async def review_case(
+    case_id: str,
+    payload: DoctorReviewRequest,
+    graph=Depends(get_graph),
+    doctor: DoctorIdentity = Depends(get_current_doctor),
+) -> CaseResponse:
     async with get_session_factory()() as session:
         repository = CaseRepository(session)
         case = await repository.get(case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="未找到病例")
-        if case.status != "PENDING_REVIEW":
+        if case.status != "WAITING_REVIEW":
             raise HTTPException(status_code=409, detail=f"病例在 {case.status} 状态下不能审核")
-        if not (await DoctorRepository(session).info(payload.reviewer_id))["found"]:
-            raise HTTPException(status_code=404, detail="未找到审核医生")
+        if not await repository.claim_review(case_id, payload.expected_version):
+            raise HTTPException(status_code=409, detail="该病例已被其他医生更新，请刷新后重新查看最新结果")
         try:
-            result = await graph.ainvoke(Command(resume=payload.model_dump(mode="json")), graph_config(case.thread_id))
+            snapshot = await graph.aget_state(graph_config(case.thread_id))
+            if snapshot.values.get("status") in {"FINAL", "REJECTED"}:
+                result = snapshot.values
+            else:
+                command = payload.model_dump(mode="json", exclude={"expected_version"})
+                command["reviewer_id"] = doctor.doctor_id
+                result = await graph.ainvoke(Command(resume=command), graph_config(case.thread_id))
             final_raw = result.get("final_assessment")
             final = DiagnosisResult.model_validate(final_raw) if final_raw else None
+            graph_review = result.get("doctor_review") or {}
+            persisted_action = graph_review.get("action", payload.action)
+            persisted_reviewer = graph_review.get("reviewer_id", doctor.doctor_id)
+            persisted_reason = graph_review.get("reason", payload.reason)
             await repository.save_review(
                 case_id,
-                action=payload.action,
-                reviewer_id=payload.reviewer_id,
+                action=persisted_action,
+                reviewer_id=persisted_reviewer,
                 result=final.model_dump(mode="json") if final else None,
-                reason=payload.reason,
+                reason=persisted_reason,
             )
         except Exception as exc:
             logger.exception(
@@ -56,6 +73,9 @@ async def review_case(case_id: str, payload: DoctorReviewRequest, graph=Depends(
             if assessment.doctor_result_json
             else None,
             review_status=assessment.review_status,
+            assessment_version=assessment.version,
+            reviewer_id=assessment.reviewer_id,
+            review_reason=assessment.review_reason,
             created_at=refreshed.created_at.isoformat(),
             updated_at=refreshed.updated_at.isoformat(),
         )

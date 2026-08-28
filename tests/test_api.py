@@ -1,3 +1,5 @@
+import asyncio
+
 import httpx
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
@@ -36,15 +38,28 @@ async def test_api_create_review_and_history() -> None:
     async with httpx.AsyncClient(
         transport=httpx.ASGITransport(app=_test_app()), base_url="http://test"
     ) as client:
+        logged_in = await client.post(
+            "/api/v1/auth/login",
+            json={"account": "DEMO-D-001", "password": "demo-clinical"},
+        )
+        assert logged_in.status_code == 200, logged_in.text
         created = await client.post(
             "/api/v1/diagnoses",
             json={"patient_id": "DEMO-P-CARDIO", "question": "活动后胸痛并有高血压史"},
         )
         assert created.status_code == 202, created.text
         case_id = created.json()["case_id"]
+        current = None
+        for _ in range(100):
+            current = await client.get(f"/api/v1/cases/{case_id}")
+            if current.json()["status"] == "WAITING_REVIEW":
+                break
+            await asyncio.sleep(0.05)
+        assert current is not None
+        assert current.json()["status"] == "WAITING_REVIEW"
         reviewed = await client.post(
             f"/api/v1/cases/{case_id}/review",
-            json={"reviewer_id": "DEMO-D-001", "action": "approve"},
+            json={"action": "approve", "expected_version": current.json()["assessment_version"]},
         )
         assert reviewed.status_code == 200, reviewed.text
         assert reviewed.json()["status"] == "FINAL"

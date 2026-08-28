@@ -1,4 +1,5 @@
 import logging
+from datetime import date
 from time import perf_counter
 from typing import Any
 
@@ -30,7 +31,7 @@ async def _patient_call(patient_id: str, method: str) -> dict[str, Any]:
             "found": False,
             "patient_id": patient_id,
             "error": "database_unavailable",
-            "message": f"患者数据库查询失败：{type(exc).__name__}",
+            "message": f"患者数据库操作失败：{type(exc).__name__}",
         }
     finally:
         logger.info(
@@ -44,7 +45,7 @@ async def _patient_call(patient_id: str, method: str) -> dict[str, Any]:
 
 
 async def get_patient_summary(patient_id: str) -> dict[str, Any]:
-    """返回虚构 DEMO 患者的最小人口学信息和病史摘要。"""
+    """返回 DEMO 患者的最小人口学信息和病史摘要。"""
     return await _patient_call(patient_id, "summary")
 
 
@@ -54,7 +55,7 @@ async def get_patient_visits(patient_id: str) -> dict[str, Any]:
 
 
 async def get_medical_records(patient_id: str) -> dict[str, Any]:
-    """返回患者所有只读病历分类。"""
+    """返回患者当前全部病历分类。"""
     return await _patient_call(patient_id, "all_records")
 
 
@@ -69,13 +70,74 @@ async def get_imaging_reports(patient_id: str) -> dict[str, Any]:
 
 
 async def get_medications(patient_id: str) -> dict[str, Any]:
-    """返回用药史；本工具不能开具处方或修改数据。"""
+    """返回已记录的用药史；V1.1 不通过该工具开具处方。"""
     return await _patient_call(patient_id, "medications")
 
 
 async def get_allergies(patient_id: str) -> dict[str, Any]:
     """返回已记录的过敏史及可用的观察时间。"""
     return await _patient_call(patient_id, "allergies")
+
+
+async def create_patient(
+    name: str,
+    sex: str,
+    birth_date: str | None = None,
+    history: list[str] | None = None,
+    source_channel: str = "mcp",
+) -> dict[str, Any]:
+    """受控创建 DEMO 患者；patient_id 由后端生成，不接受调用方指定。"""
+    if sex not in {"male", "female", "other"}:
+        return {"created": False, "error": "invalid_sex", "message": "sex 必须为 male/female/other"}
+    parsed_birth_date = date.fromisoformat(birth_date) if birth_date else None
+    async with get_session_factory()() as session:
+        patient = await PatientRepository(session).create(
+            name=name,
+            birth_date=parsed_birth_date,
+            sex=sex,
+            history=history or [],
+            data_scope="demo",
+            source_channel=source_channel,
+        )
+        return {
+            "created": True,
+            "patient_id": patient.id,
+            "name": patient.demo_label,
+            "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
+            "sex": patient.sex,
+            "history": patient.summary_json.get("history", []),
+            "data_scope": patient.data_scope,
+            "source_channel": patient.source_channel,
+        }
+
+
+async def update_patient(
+    patient_id: str,
+    name: str | None = None,
+    sex: str | None = None,
+    birth_date: str | None = None,
+    history: list[str] | None = None,
+) -> dict[str, Any]:
+    """受控修改 DEMO 患者基础资料和病史摘要；不允许越过 data_scope 修改真实患者。"""
+    if sex is not None and sex not in {"male", "female", "other"}:
+        return {"updated": False, "patient_id": patient_id, "error": "invalid_sex"}
+    parsed_birth_date = date.fromisoformat(birth_date) if birth_date else None
+    async with get_session_factory()() as session:
+        repository = PatientRepository(session)
+        if await repository.data_scope(patient_id) != "demo":
+            return {"updated": False, "patient_id": patient_id, "error": "patient_not_found"}
+        patient = await repository.update_patient(
+            patient_id,
+            name=name,
+            birth_date=parsed_birth_date,
+            sex=sex,
+            history=history,
+        )
+        if patient is None:
+            return {"updated": False, "patient_id": patient_id, "error": "patient_not_found"}
+        result = await repository.summary(patient_id)
+        result["updated"] = True
+        return result
 
 
 async def get_doctor_info(doctor_id: str) -> dict[str, Any]:

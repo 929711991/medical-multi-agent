@@ -4,13 +4,14 @@ from typing import Any, AsyncIterator
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from app.api import cases, diagnosis, review
+from app.api import auth, cases, dashboard, diagnosis, knowledge, patients, review
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.graph.workflow import build_diagnosis_graph
 from app.mcp.client import get_mcp_manager, reset_mcp_manager
 from app.persistence.checkpoint import mysql_checkpointer
 from app.persistence.database import close_database, initialize_schema
+from app.services.health import collect_health
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -45,15 +46,14 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
     app.include_router(diagnosis.router, prefix=get_settings().api_prefix)
     app.include_router(cases.router, prefix=get_settings().api_prefix)
     app.include_router(review.router, prefix=get_settings().api_prefix)
+    app.include_router(auth.router, prefix=get_settings().api_prefix)
+    app.include_router(patients.router, prefix=get_settings().api_prefix)
+    app.include_router(dashboard.router, prefix=get_settings().api_prefix)
+    app.include_router(knowledge.router, prefix=get_settings().api_prefix)
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
-        return {
-            "status": "ok",
-            "service": get_settings().app_name,
-            "llm_configured": bool(get_settings().aliyun_llm_api_key),
-            "rag_enabled": get_settings().rag_enabled,
-        }
+        return await collect_health()
 
     @app.exception_handler(Exception)
     async def unhandled_exception(_: Request, exc: Exception) -> JSONResponse:

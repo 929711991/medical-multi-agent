@@ -34,7 +34,7 @@ async def test_mysql_checkpoint_survives_reconnect_and_has_history() -> None:
             ),
             graph_config(thread_id),
         )
-        assert result["status"] == "PENDING_REVIEW"
+        assert result["status"] == "WAITING_REVIEW"
         state = await first_graph.aget_state(graph_config(thread_id))
         assert state.next == ("doctor_review",)
 

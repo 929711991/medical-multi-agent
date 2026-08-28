@@ -21,12 +21,15 @@ async def synthesis_node(state: DiagnosisState) -> dict:
             "possible_conditions": _dedupe_conditions(conditions),
             "red_flags": list(dict.fromkeys(red_flags + state.get("red_flags", []))),
             "risk_level": state.get("risk_level", draft.risk_level),
+            "specialist_opinions": [
+                SpecialistOpinion.model_validate(item) for item in state.get("specialist_opinions", [])
+            ],
         }
     )
     return {
         "current_stage": "synthesis",
         "draft_assessment": synthesized.model_dump(mode="json"),
-        "status": "PENDING_REVIEW",
+        "status": "WAITING_REVIEW",
     }
 
 
@@ -37,4 +40,3 @@ def _dedupe_conditions(items: list[PossibleCondition]) -> list[PossibleCondition
         if existing is None or item.confidence > existing.confidence:
             seen[item.name] = item
     return list(seen.values())
-
