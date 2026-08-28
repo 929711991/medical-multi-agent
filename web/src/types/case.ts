@@ -1,10 +1,12 @@
 import type { DiagnosisResult, RiskLevel } from './diagnosis'
 
-export type CaseStatus = 'CREATED' | 'RUNNING' | 'WAITING_REVIEW' | 'FINAL' | 'REJECTED' | 'FAILED'
+export type CaseStatus = 'CREATED' | 'QUEUED' | 'RUNNING' | 'WAITING_REVIEW' | 'FINAL' | 'REJECTED' | 'FAILED'
 export interface MedicalCase {
   id: string
   patient_id: string
   patient_name?: string
+  source_channel?: 'doctor_web' | 'wechat_mini_program'
+  visit_id?: string | null
   thread_id?: string
   question: string
   status: CaseStatus

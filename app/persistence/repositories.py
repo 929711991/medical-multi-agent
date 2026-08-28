@@ -521,6 +521,8 @@ class CaseRepository:
                 "patient_name": patient.display_name if patient else str(row.patient_id),
                 "question": row.question,
                 "status": row.status,
+                "source_channel": row.source_channel,
+                "visit_id": str(row.visit_id) if row.visit_id is not None else None,
                 "risk_level": row.risk_level,
                 "specialty": _specialty_from_result(assessment.ai_result_json if assessment else None),
                 "assessment_version": assessment.version if assessment else 1,

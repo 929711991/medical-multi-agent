@@ -17,7 +17,7 @@ EMERGENCY_RULES: dict[str, tuple[str, ...]] = {
     "严重过敏": ("喉头水肿", "过敏伴呼吸困难", "全身风团伴晕厥"),
 }
 HIGH_RULES = ("持续胸痛", "黑便", "反复呕吐", "高热不退", "血压极高")
-MEDIUM_RULES = ("胸痛", "呼吸困难", "腹痛", "呕吐", "头晕")
+MEDIUM_RULES = ("胸痛", "呼吸困难", "腹痛", "腹疼", "肚子疼", "右下腹", "呕吐", "头晕")
 
 
 def screen_risk(text: str) -> RiskScreeningResult:

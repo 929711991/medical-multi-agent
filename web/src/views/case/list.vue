@@ -1,9 +1,128 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppPage from '../../components/common/AppPage.vue'; import StatusBadge from '../../components/common/StatusBadge.vue'; import EmptyState from '../../components/common/EmptyState.vue'; import ErrorState from '../../components/common/ErrorState.vue'; import { getCases } from '../../api/case'; import type { MedicalCase } from '../../types/case'; import { formatDateTime } from '../../utils/format'; import { specialtyLabel } from '../../utils/medical'
-const route = useRoute(); const router = useRouter(); const items = ref<MedicalCase[]>([]); const loading = ref(true); const error = ref(''); const tab = ref(String(route.query.status || '')); const filters = reactive({ search: '', risk_level: String(route.query.risk || '') }); const page = reactive({ page: 1, page_size: 20, total: 0 })
+import { onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import AppPage from '../../components/common/AppPage.vue'
+import StatusBadge from '../../components/common/StatusBadge.vue'
+import EmptyState from '../../components/common/EmptyState.vue'
+import ErrorState from '../../components/common/ErrorState.vue'
+import { getCases } from '../../api/case'
+import type { MedicalCase } from '../../types/case'
+import { formatDateTime } from '../../utils/format'
+import { specialtyLabel } from '../../utils/medical'
+const route = useRoute()
+const router = useRouter()
+const items = ref<MedicalCase[]>([])
+const loading = ref(true)
+const error = ref('')
+const tab = ref(String(route.query.status || ''))
+const filters = reactive({ search: '', risk_level: String(route.query.risk || '') })
+const page = reactive({ page: 1, page_size: 20, total: 0 })
 // 根据当前标签、风险和关键词读取病例，并保留分页总数供列表控件使用。
-async function load() { loading.value = true; error.value = ''; try { const result = await getCases({ ...page, status: tab.value || undefined, risk_level: filters.risk_level || undefined, search: filters.search || undefined }); items.value = result.items; page.total = result.total } catch { error.value = '病例列表加载失败' } finally { loading.value = false } }
-watch(tab, () => { page.page = 1; load() }); onMounted(load)
+async function load() {
+  loading.value = true
+  error.value = ''
+  try {
+    const result = await getCases({
+      ...page,
+      status: tab.value || undefined,
+      risk_level: filters.risk_level || undefined,
+      search: filters.search || undefined,
+    })
+    items.value = result.items
+    page.total = result.total
+  } catch {
+    error.value = '病例列表加载失败'
+  } finally {
+    loading.value = false
+  }
+}
+watch(tab, () => {
+  page.page = 1
+  load()
+})
+onMounted(load)
 </script>
-<template><AppPage title="AI 辅助诊断" description="追踪从病例创建到医生最终审核的完整状态"><el-tabs v-model="tab" class="case-tabs"><el-tab-pane label="全部" name="" /><el-tab-pane label="诊断中" name="RUNNING" /><el-tab-pane label="待审核" name="WAITING_REVIEW" /><el-tab-pane label="已完成" name="FINAL" /><el-tab-pane label="已驳回" name="REJECTED" /><el-tab-pane label="执行失败" name="FAILED" /></el-tabs><section class="surface list-card"><div class="toolbar"><el-input v-model="filters.search" clearable placeholder="搜索病例号或患者" style="width: 280px" @keyup.enter="load" /><el-select v-model="filters.risk_level" clearable placeholder="风险等级" style="width: 150px"><el-option label="紧急风险" value="emergency" /><el-option label="高风险" value="high" /><el-option label="中风险" value="medium" /><el-option label="低风险" value="low" /></el-select><el-button type="primary" @click="load">查询</el-button></div><el-skeleton v-if="loading" :rows="8" animated /><ErrorState v-else-if="error" :message="error" @retry="load" /><EmptyState v-else-if="!items.length" title="暂无符合条件的 AI 病例" /><template v-else><el-table :data="items"><el-table-column label="病例号" min-width="220"><template #default="{ row }"><span class="mono case-id">{{ row.id }}</span></template></el-table-column><el-table-column prop="patient_name" label="患者" min-width="160" /><el-table-column prop="question" label="主诉 / 临床问题" min-width="260" show-overflow-tooltip /><el-table-column label="专科" width="110"><template #default="{ row }">{{ specialtyLabel(row.specialty) }}</template></el-table-column><el-table-column label="风险" width="110"><template #default="{ row }"><StatusBadge type="risk" :value="row.risk_level" /></template></el-table-column><el-table-column label="状态" width="115"><template #default="{ row }"><StatusBadge type="status" :value="row.status" /></template></el-table-column><el-table-column label="更新时间" min-width="165"><template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template></el-table-column><el-table-column width="95" fixed="right"><template #default="{ row }"><el-button link type="primary" @click="router.push(`/cases/${row.id}`)">进入病例</el-button></template></el-table-column></el-table><div class="pagination"><el-pagination v-model:current-page="page.page" :total="page.total" :page-size="page.page_size" layout="total, prev, pager, next" @current-change="load" /></div></template></section></AppPage></template>
-<style scoped lang="scss">.case-tabs { margin-bottom: 14px; }.list-card { padding: 20px; }.case-id { font-size: 11px; color: var(--text-secondary); }.pagination { padding-top: 18px; display: flex; justify-content: flex-end; }</style>
+<template>
+  <AppPage title="AI 辅助诊断" description="追踪从病例创建到医生最终审核的完整状态"
+    ><el-tabs v-model="tab" class="case-tabs"
+      ><el-tab-pane label="全部" name="" /><el-tab-pane label="诊断中" name="RUNNING" /><el-tab-pane
+        label="待审核"
+        name="WAITING_REVIEW" /><el-tab-pane label="已完成" name="FINAL" /><el-tab-pane
+        label="已驳回"
+        name="REJECTED" /><el-tab-pane label="执行失败" name="FAILED"
+    /></el-tabs>
+    <section class="surface list-card">
+      <div class="toolbar">
+        <el-input
+          v-model="filters.search"
+          clearable
+          placeholder="搜索病例号或患者"
+          style="width: 280px"
+          @keyup.enter="load"
+        /><el-select v-model="filters.risk_level" clearable placeholder="风险等级" style="width: 150px"
+          ><el-option label="紧急风险" value="emergency" /><el-option label="高风险" value="high" /><el-option
+            label="中风险"
+            value="medium" /><el-option label="低风险" value="low" /></el-select
+        ><el-button type="primary" @click="load">查询</el-button>
+      </div>
+      <el-skeleton v-if="loading" :rows="8" animated /><ErrorState
+        v-else-if="error"
+        :message="error"
+        @retry="load"
+      /><EmptyState v-else-if="!items.length" title="暂无符合条件的 AI 病例" /><template v-else
+        ><el-table :data="items"
+          ><el-table-column label="病例号" min-width="220"
+            ><template #default="{ row }"
+              ><span class="mono case-id">{{ row.id }}</span></template
+            ></el-table-column
+          ><el-table-column prop="patient_name" label="患者" min-width="160" /><el-table-column label="来源" width="110"><template #default="{ row }"><el-tag v-if="row.source_channel === 'wechat_mini_program'" type="success">微信转诊</el-tag><span v-else>医生工作台</span></template></el-table-column><el-table-column
+            prop="question"
+            label="主诉 / 临床问题"
+            min-width="260"
+            show-overflow-tooltip
+          /><el-table-column label="专科" width="110"
+            ><template #default="{ row }">{{ specialtyLabel(row.specialty) }}</template></el-table-column
+          ><el-table-column label="风险" width="110"
+            ><template #default="{ row }"
+              ><StatusBadge type="risk" :value="row.risk_level" /></template></el-table-column
+          ><el-table-column label="状态" width="115"
+            ><template #default="{ row }"
+              ><StatusBadge type="status" :value="row.status" /></template></el-table-column
+          ><el-table-column label="更新时间" min-width="165"
+            ><template #default="{ row }">{{ formatDateTime(row.updated_at) }}</template></el-table-column
+          ><el-table-column width="95" fixed="right"
+            ><template #default="{ row }"
+              ><el-button link type="primary" @click="router.push(`/cases/${row.id}`)"
+                >进入病例</el-button
+              ></template
+            ></el-table-column
+          ></el-table
+        >
+        <div class="pagination">
+          <el-pagination
+            v-model:current-page="page.page"
+            :total="page.total"
+            :page-size="page.page_size"
+            layout="total, prev, pager, next"
+            @current-change="load"
+          /></div
+      ></template></section
+  ></AppPage>
+</template>
+<style scoped lang="scss">
+.case-tabs {
+  margin-bottom: 14px;
+}
+.list-card {
+  padding: 20px;
+}
+.case-id {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.pagination {
+  padding-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+}
+</style>
