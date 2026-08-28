@@ -47,6 +47,8 @@ START
 - Middleware：智能体启用手机号/邮箱脱敏、模型调用次数限制和工具调用次数限制。
 - RAG：当前只有稳定接口，没有选择或下载 ModelScope 数据集，没有 Embedding，也没有创建 Milvus Collection。
 
+Checkpoint 表中的 `checkpoint_ns_hash` 是 Checkpointer 内部使用的 16 字节二进制摘要。三个表同时提供自动生成的只读字段 `checkpoint_ns_hash_md5`，显示为常见的 32 位 MD5 文本，便于与原始字段对照；请勿修改内部二进制字段。
+
 ## 环境要求
 
 - Windows 10/11 + Docker Desktop（WSL2）

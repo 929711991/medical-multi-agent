@@ -13,6 +13,12 @@ from app.persistence.checkpoint import mysql_checkpointer
 from app.persistence.database import close_database, initialize_schema
 
 
+class UTF8JSONResponse(JSONResponse):
+    """显式声明 UTF-8，避免 Windows PowerShell 错误解码中文 JSON。"""
+
+    media_type = "application/json; charset=utf-8"
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
@@ -32,6 +38,7 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
         version="1.0.0",
         description="医疗辅助诊断系统；所有最终结论必须经过医生审核。",
         lifespan=selected_lifespan,
+        default_response_class=UTF8JSONResponse,
     )
     if graph is not None:
         app.state.diagnosis_graph = graph
@@ -50,7 +57,7 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception(_: Request, exc: Exception) -> JSONResponse:
-        return JSONResponse(status_code=500, content={"detail": f"服务器内部错误：{type(exc).__name__}"})
+        return UTF8JSONResponse(status_code=500, content={"detail": f"服务器内部错误：{type(exc).__name__}"})
 
     return app
 

@@ -26,6 +26,8 @@ async def test_health_without_external_calls() -> None:
         response = await client.get("/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    assert response.headers["content-type"] == "application/json; charset=utf-8"
+    assert response.json()["service"] == "医疗辅助多智能体 V1"
 
 
 @pytest.mark.integration

@@ -46,6 +46,7 @@ async def test_mysql_checkpoint_survives_reconnect_and_has_history() -> None:
             graph_config(thread_id),
         )
         assert result["status"] == "FINAL"
+        assert result["user_query"] == "活动后胸痛并有高血压史"
         history = await get_history(restarted_graph, thread_id)
         assert len(history) >= 5
         assert any(item.stage == "risk_screening" for item in history)
