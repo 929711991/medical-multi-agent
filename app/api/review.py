@@ -63,8 +63,8 @@ async def review_case(
         assert refreshed is not None
         assessment = refreshed.assessments[0]
         return CaseResponse(
-            id=refreshed.id,
-            patient_id=refreshed.patient_id,
+            id=str(refreshed.id),
+            patient_id=str(refreshed.patient_id),
             thread_id=refreshed.thread_id,
             question=refreshed.question,
             status=refreshed.status,
@@ -75,7 +75,7 @@ async def review_case(
             else None,
             review_status=assessment.review_status,
             assessment_version=assessment.version,
-            reviewer_id=assessment.reviewer_id,
+            reviewer_id=str(assessment.reviewer_id) if assessment.reviewer_id is not None else None,
             review_reason=assessment.review_reason,
             created_at=refreshed.created_at.isoformat(),
             updated_at=refreshed.updated_at.isoformat(),

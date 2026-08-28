@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from sqlalchemy import text
 
-from app.core.snowflake import MIN_PLAUSIBLE_SNOWFLAKE_ID
+from app.core.snowflake import MIN_PLAUSIBLE_SNOWFLAKE_ID, generate_snowflake_id
 from app.persistence.database import BUSINESS_TABLES, get_engine, get_session_factory, initialize_schema
 from app.persistence.models import Base, MedicalVisit, Patient
 
@@ -24,6 +24,26 @@ async def test_mysql_business_tables_use_snowflake_primary_keys() -> None:
     )
 
     async with get_engine().connect() as connection:
+        for table_name, column_name in (
+            ("patients", "id"),
+            ("doctors", "id"),
+            ("medical_cases", "id"),
+            ("medical_visits", "patient_id"),
+            ("lab_results", "patient_id"),
+            ("imaging_reports", "patient_id"),
+            ("medications", "patient_id"),
+            ("allergies", "patient_id"),
+            ("medical_assessments", "case_id"),
+            ("medical_assessments", "reviewer_id"),
+            ("knowledge_documents", "id"),
+        ):
+            column = (
+                await connection.execute(
+                    text(f"SHOW COLUMNS FROM `{table_name}` WHERE Field = '{column_name}'")
+                )
+            ).mappings().one()
+            assert column["Type"] == "bigint"
+
         for table_name in business_tables:
             indexes = (
                 await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))
@@ -102,7 +122,7 @@ async def test_mysql_business_tables_use_snowflake_primary_keys() -> None:
 @pytest.mark.integration
 @pytest.mark.asyncio
 async def test_mysql_assigns_snowflake_ids_to_new_rows() -> None:
-    patient_code = f"PT-SNOW-{uuid4().hex[:12].upper()}"
+    patient_code = generate_snowflake_id()
     async with get_session_factory()() as session:
         patient = Patient(
             id=patient_code,

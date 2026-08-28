@@ -1,7 +1,7 @@
 import logging
-from uuid import uuid4
 
 from app.graph.workflow import graph_config, initial_state
+from app.core.snowflake import generate_snowflake_id
 from app.persistence.database import get_session_factory
 from app.persistence.repositories import CaseRepository
 from app.schemas.diagnosis import DiagnosisResult
@@ -14,7 +14,8 @@ class DiagnosisService:
     @staticmethod
     async def create_case(*, patient_id: str, question: str, source_channel: str = "doctor_web") -> tuple[str, str]:
         """校验患者访问权限并创建病例及对应图线程。"""
-        case_id = str(uuid4())
+        # 病例编号使用雪花算法生成，数据库中的病例主键始终保持 BIGINT。
+        case_id = str(generate_snowflake_id())
         thread_id = case_id
         async with get_session_factory()() as session:
             if not await PatientAccessService(session).can_access_patient(patient_id):

@@ -6,6 +6,7 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.identifiers import identifier_to_bigint
 from app.core.passwords import hash_password
 from app.core.snowflake import MIN_PLAUSIBLE_SNOWFLAKE_ID, generate_snowflake_id
 
@@ -23,6 +24,30 @@ BUSINESS_TABLES = (
     "medical_assessments",
     "knowledge_documents",
 )
+
+IDENTIFIER_COLUMNS = {
+    "patients": ("id",),
+    "doctors": ("id",),
+    "medical_visits": ("id", "patient_id"),
+    "lab_results": ("id", "patient_id"),
+    "imaging_reports": ("id", "patient_id"),
+    "medications": ("id", "patient_id"),
+    "allergies": ("id", "patient_id"),
+    "medical_cases": ("id", "patient_id"),
+    "medical_assessments": ("id", "case_id", "reviewer_id"),
+    "knowledge_documents": ("id",),
+}
+
+IDENTIFIER_REFERENCES = {
+    ("medical_visits", "patient_id"): ("patients", "id", "patient"),
+    ("lab_results", "patient_id"): ("patients", "id", "patient"),
+    ("imaging_reports", "patient_id"): ("patients", "id", "patient"),
+    ("medications", "patient_id"): ("patients", "id", "patient"),
+    ("allergies", "patient_id"): ("patients", "id", "patient"),
+    ("medical_cases", "patient_id"): ("patients", "id", "patient"),
+    ("medical_assessments", "case_id"): ("medical_cases", "id", "case"),
+    ("medical_assessments", "reviewer_id"): ("doctors", "id", "doctor"),
+}
 
 
 def get_engine() -> AsyncEngine:
@@ -279,6 +304,120 @@ async def _restore_foreign_keys(connection, foreign_keys: list[dict[str, Any]]) 
         )
 
 
+async def _column_types(connection, table_name: str) -> dict[str, str]:
+    """读取表中编号字段的当前 MySQL 类型。"""
+    rows = (
+        await connection.execute(text(f"SHOW FULL COLUMNS FROM `{table_name}`"))
+    ).mappings().all()
+    return {str(row["Field"]): str(row["Type"]).lower() for row in rows}
+
+
+async def _identifier_values(connection, table_name: str, column_name: str) -> list[Any]:
+    """读取编号列的去重值，为历史字符串编号转换建立映射。"""
+    rows = (
+        await connection.execute(
+            text(f"SELECT DISTINCT `{column_name}` FROM `{table_name}` WHERE `{column_name}` IS NOT NULL")
+        )
+    ).scalars().all()
+    return list(rows)
+
+
+def _build_identifier_mapping(values: list[Any], namespace: str) -> dict[Any, int]:
+    """为一张表的历史编号建立无冲突的 BIGINT 映射。"""
+    numeric_values: set[int] = set()
+    for value in values:
+        try:
+            numeric_values.add(int(str(value).strip()))
+        except (TypeError, ValueError):
+            continue
+
+    mapping: dict[Any, int] = {}
+    assigned: set[int] = set()
+    for value in values:
+        candidate = identifier_to_bigint(value, namespace=namespace)
+        if candidate is None:
+            continue
+        try:
+            original_numeric = int(str(value).strip())
+        except (TypeError, ValueError):
+            original_numeric = None
+        # 历史字符串别名可能与表中已有数字编号冲突，冲突时重新生成雪花编号。
+        while candidate in assigned or (
+            candidate in numeric_values and original_numeric != candidate
+        ):
+            candidate = generate_snowflake_id()
+        mapping[value] = candidate
+        assigned.add(candidate)
+    return mapping
+
+
+async def _migrate_all_identifier_columns_to_bigint(connection) -> None:
+    """把业务表中的主键、业务编号和关联外键统一迁移为 BIGINT。"""
+    column_types = {
+        table_name: await _column_types(connection, table_name)
+        for table_name in BUSINESS_TABLES
+    }
+    needs_migration = any(
+        not column_types[table_name].get(column_name, "").startswith("bigint")
+        for table_name, columns in IDENTIFIER_COLUMNS.items()
+        for column_name in columns
+    )
+    if not needs_migration:
+        return
+
+    # 修改父子表类型前先暂时移除外键，避免 MySQL 拒绝类型变更或历史值更新。
+    foreign_keys = await _foreign_keys(connection)
+    await _drop_foreign_keys(connection, foreign_keys)
+    try:
+        parent_mappings: dict[tuple[str, str], dict[Any, int]] = {}
+        for table_name in ("patients", "doctors", "medical_cases", "knowledge_documents"):
+            values = await _identifier_values(connection, table_name, "id")
+            namespace = table_name.removesuffix("s")
+            parent_mappings[(table_name, "id")] = _build_identifier_mapping(values, namespace)
+
+        # 先更新所有子表引用，保证转换父表编号后关系仍然完整。
+        for (child_table, child_column), (parent_table, parent_column, _) in IDENTIFIER_REFERENCES.items():
+            mapping = parent_mappings[(parent_table, parent_column)]
+            for old_value, new_value in mapping.items():
+                await connection.execute(
+                    text(
+                        f"UPDATE `{child_table}` SET `{child_column}` = :new_value "
+                        f"WHERE `{child_column}` = :old_value"
+                    ),
+                    {"old_value": old_value, "new_value": new_value},
+                )
+
+        # 再更新父表自身编号，避免子表留下无法关联的历史字符串。
+        for (table_name, column_name), mapping in parent_mappings.items():
+            if column_types[table_name].get(column_name, "").startswith("bigint"):
+                continue
+            for old_value, new_value in mapping.items():
+                await connection.execute(
+                    text(
+                        f"UPDATE `{table_name}` SET `{column_name}` = :new_value "
+                        f"WHERE `{column_name}` = :old_value"
+                    ),
+                    {"old_value": old_value, "new_value": new_value},
+                )
+
+        nullable_columns = {("medical_assessments", "reviewer_id")}
+        for table_name, columns in IDENTIFIER_COLUMNS.items():
+            for column_name in columns:
+                if column_name == "thread_id":
+                    continue
+                if column_types[table_name].get(column_name, "").startswith("bigint"):
+                    continue
+                nullability = "NULL" if (table_name, column_name) in nullable_columns else "NOT NULL"
+                await connection.execute(
+                    text(
+                        f"ALTER TABLE `{table_name}` MODIFY COLUMN `{column_name}` "
+                        f"BIGINT {nullability}"
+                    )
+                )
+    finally:
+        await _restore_foreign_keys(connection, foreign_keys)
+
+
 async def _schema_comments_outdated(connection, tables) -> bool:
     """判断 ORM 中的表或字段注释是否与 MySQL 不一致。"""
     for table in tables:
@@ -401,18 +540,6 @@ async def initialize_schema() -> None:
             await connection.execute(text("ALTER TABLE doctors ADD COLUMN password_hash VARCHAR(255) NULL"))
         if not await _has_unique_column_index(connection, "doctors", "account"):
             await connection.execute(text("CREATE UNIQUE INDEX ux_doctors_account ON doctors (account)"))
-        settings = get_settings()
-        await connection.execute(
-            text(
-                "UPDATE doctors SET account = :account, password_hash = :password_hash "
-                "WHERE id = :doctor_id AND (account IS NULL OR account = '' OR password_hash IS NULL)"
-            ),
-            {
-                "account": settings.login_account,
-                "password_hash": hash_password(settings.login_password),
-                "doctor_id": settings.login_doctor_id,
-            },
-        )
         await connection.execute(
             text(
                 "UPDATE doctors SET name = TRIM(SUBSTRING(name, :prefix_length)) "
@@ -429,6 +556,21 @@ async def initialize_schema() -> None:
             await connection.execute(
                 text("ALTER TABLE medical_cases ADD COLUMN source_channel VARCHAR(32) NOT NULL DEFAULT 'doctor_web'")
             )
+
+        await _migrate_all_identifier_columns_to_bigint(connection)
+
+        settings = get_settings()
+        await connection.execute(
+            text(
+                "UPDATE doctors SET account = :account, password_hash = :password_hash "
+                "WHERE id = :doctor_id AND (account IS NULL OR account = '' OR password_hash IS NULL)"
+            ),
+            {
+                "account": settings.login_account,
+                "password_hash": hash_password(settings.login_password),
+                "doctor_id": settings.login_doctor_id,
+            },
+        )
 
         for table_name in ("patients", "doctors", "medical_cases", "knowledge_documents"):
             await _migrate_business_table_to_snowflake_primary(connection, table_name)

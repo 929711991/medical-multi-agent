@@ -67,8 +67,8 @@ async def get_case(case_id: str) -> CaseResponse:
             raise HTTPException(status_code=404, detail="未找到病例")
         assessment = case.assessments[0] if case.assessments else None
         return CaseResponse(
-            id=case.id,
-            patient_id=case.patient_id,
+            id=str(case.id),
+            patient_id=str(case.patient_id),
             thread_id=case.thread_id,
             question=case.question,
             status=case.status,
@@ -82,7 +82,7 @@ async def get_case(case_id: str) -> CaseResponse:
             else None,
             review_status=assessment.review_status if assessment else None,
             assessment_version=assessment.version if assessment else 1,
-            reviewer_id=assessment.reviewer_id if assessment else None,
+            reviewer_id=str(assessment.reviewer_id) if assessment and assessment.reviewer_id is not None else None,
             review_reason=assessment.review_reason if assessment else None,
             created_at=case.created_at.isoformat(),
             updated_at=case.updated_at.isoformat(),
@@ -97,7 +97,7 @@ async def case_history(case_id: str, graph=Depends(get_graph)) -> HistoryRespons
         if case is None:
             raise HTTPException(status_code=404, detail="未找到病例")
         items = await get_history(graph, case.thread_id)
-        return HistoryResponse(case_id=case.id, thread_id=case.thread_id, items=items)
+        return HistoryResponse(case_id=str(case.id), thread_id=case.thread_id, items=items)
 
 
 @router.get("/cases/{case_id}/events")

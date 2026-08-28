@@ -1,12 +1,13 @@
 from datetime import UTC, date, datetime
 from typing import Any
-from uuid import uuid4
 
 from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.passwords import verify_password
+from app.core.identifiers import identifier_to_bigint
+from app.core.snowflake import generate_snowflake_id
 from app.persistence.models import (
     Allergy,
     Doctor,
@@ -21,6 +22,18 @@ from app.persistence.models import (
 )
 
 
+def _identifier_value(value: str | int | None, namespace: str) -> int | None:
+    """把接口层编号转换为指定业务域的数据库整数编号。"""
+    return identifier_to_bigint(value, namespace=namespace)
+
+
+def _identifier_text(requested: str | int | None, actual: int | None) -> str | None:
+    """优先保留调用方传入的历史别名，否则返回数据库整数编号。"""
+    if requested is not None and not str(requested).strip().lstrip("-").isdigit():
+        return str(requested)
+    return None if actual is None else str(actual)
+
+
 class PatientRepository:
     def __init__(self, session: AsyncSession):
         """将患者数据操作绑定到当前事务会话。"""
@@ -32,7 +45,10 @@ class PatientRepository:
 
     async def _get(self, patient_id: str) -> Patient | None:
         """根据稳定的对外业务编号读取患者。"""
-        return await self.session.scalar(select(Patient).where(Patient.id == patient_id))
+        identifier = _identifier_value(patient_id, "patient")
+        if identifier is None:
+            return None
+        return await self.session.scalar(select(Patient).where(Patient.id == identifier))
 
     async def data_scope(self, patient_id: str) -> str | None:
         """读取患者访问控制使用的数据隔离范围。"""
@@ -51,7 +67,7 @@ class PatientRepository:
     ) -> Patient:
         """创建沙箱患者，并分配低碰撞概率的业务编号。"""
         patient = Patient(
-            id=f"PT-{uuid4().hex[:12].upper()}",
+            id=generate_snowflake_id(),
             display_name=name.strip(),
             birth_date=birth_date,
             sex=sex,
@@ -127,7 +143,7 @@ class PatientRepository:
                 (today.month, today.day) < (patient.birth_date.month, patient.birth_date.day)
             ) if patient.birth_date else None
             items.append({
-                "patient_id": patient.id,
+                "patient_id": str(patient.id),
                 "name": patient.display_name,
                 "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
                 "age": age,
@@ -147,7 +163,7 @@ class PatientRepository:
             return {"found": False, "patient_id": patient_id, "message": "未找到患者"}
         return {
             "found": True,
-            "patient_id": patient.id,
+            "patient_id": _identifier_text(patient_id, patient.id),
             "display_name": patient.display_name,
             "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
             "sex": patient.sex,
@@ -255,7 +271,10 @@ class PatientRepository:
         """以统一方式读取并序列化一种临床记录。"""
         if not await self.exists(patient_id):
             return {"found": False, "patient_id": patient_id, "message": "未找到患者", "items": []}
-        rows = (await self.session.scalars(select(model).where(model.patient_id == patient_id).order_by(order.desc()))).all()
+        identifier = _identifier_value(patient_id, "patient")
+        if identifier is None:
+            return {"found": False, "patient_id": patient_id, "message": "未找到患者", "items": []}
+        rows = (await self.session.scalars(select(model).where(model.patient_id == identifier).order_by(order.desc()))).all()
         return {"found": True, "patient_id": patient_id, "items": [serializer(row) for row in rows]}
 
 
@@ -266,12 +285,17 @@ class DoctorRepository:
 
     async def info(self, doctor_id: str) -> dict[str, Any]:
         """根据医生业务编号返回对外身份信息。"""
-        doctor = await self.session.scalar(select(Doctor).where(Doctor.id == doctor_id))
+        identifier = _identifier_value(doctor_id, "doctor")
+        doctor = (
+            await self.session.scalar(select(Doctor).where(Doctor.id == identifier))
+            if identifier is not None
+            else None
+        )
         if doctor is None:
             return {"found": False, "doctor_id": doctor_id, "message": "未找到医生"}
         return {
             "found": True,
-            "doctor_id": doctor.id,
+            "doctor_id": str(doctor.id),
             "name": doctor.name,
             "department": doctor.department,
             "title": doctor.title,
@@ -284,7 +308,7 @@ class DoctorRepository:
             return {"found": False, "doctor_id": account, "message": "invalid login credentials"}
         return {
             "found": True,
-            "doctor_id": doctor.id,
+            "doctor_id": str(doctor.id),
             "account": doctor.account,
             "name": doctor.name,
             "department": doctor.department,
@@ -307,9 +331,13 @@ class CaseRepository:
         source_channel: str = "doctor_web",
     ) -> MedicalCase:
         """在同一事务中创建病例及其初始待审核评估。"""
+        database_case_id = _identifier_value(case_id, "case")
+        database_patient_id = _identifier_value(patient_id, "patient")
+        if database_case_id is None or database_patient_id is None:
+            raise ValueError("病例和患者编号必须能转换为整数")
         case = MedicalCase(
-            id=case_id,
-            patient_id=patient_id,
+            id=database_case_id,
+            patient_id=database_patient_id,
             thread_id=thread_id,
             question=question,
             source_channel=source_channel,
@@ -322,7 +350,10 @@ class CaseRepository:
 
     async def get(self, case_id: str) -> MedicalCase | None:
         """根据对外病例编号读取病例及其评估。"""
-        statement = select(MedicalCase).where(MedicalCase.id == case_id).options(selectinload(MedicalCase.assessments))
+        identifier = _identifier_value(case_id, "case")
+        if identifier is None:
+            return None
+        statement = select(MedicalCase).where(MedicalCase.id == identifier).options(selectinload(MedicalCase.assessments))
         return (await self.session.scalars(statement)).first()
 
     async def list(
@@ -370,9 +401,9 @@ class CaseRepository:
             assessment = row.assessments[0] if row.assessments else None
             patient = patients.get(row.patient_id)
             items.append({
-                "id": row.id,
-                "patient_id": row.patient_id,
-                "patient_name": patient.display_name if patient else row.patient_id,
+                "id": str(row.id),
+                "patient_id": str(row.patient_id),
+                "patient_name": patient.display_name if patient else str(row.patient_id),
                 "question": row.question,
                 "status": row.status,
                 "risk_level": row.risk_level,
@@ -434,8 +465,11 @@ class CaseRepository:
         if case is None:
             raise LookupError("未找到病例")
         assessment = case.assessments[0]
+        database_reviewer_id = _identifier_value(reviewer_id, "doctor")
+        if database_reviewer_id is None:
+            raise ValueError("审核医生编号必须能转换为整数")
         assessment.review_status = action.upper()
-        assessment.reviewer_id = reviewer_id
+        assessment.reviewer_id = database_reviewer_id
         assessment.doctor_result_json = result
         assessment.review_reason = reason
         assessment.reviewed_at = datetime.now(UTC)
@@ -450,8 +484,11 @@ class KnowledgeRepository:
 
     async def get(self, document_id: str) -> KnowledgeDocument | None:
         """根据对外文档编号读取知识文档。"""
+        identifier = _identifier_value(document_id, "document")
+        if identifier is None:
+            return None
         return await self.session.scalar(
-            select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
+            select(KnowledgeDocument).where(KnowledgeDocument.id == identifier)
         )
 
     async def count_ready(self) -> int:
@@ -477,7 +514,7 @@ class KnowledgeRepository:
         return {
             "items": [
                 {
-                    "id": item.id,
+                    "id": str(item.id),
                     "title": item.title,
                     "source": item.source,
                     "source_type": item.source_type,
@@ -511,7 +548,10 @@ class KnowledgeRepository:
         """新增或更新文档的持久化入库状态。"""
         document = await self.get(document_id)
         if document is None:
-            document = KnowledgeDocument(id=document_id)
+            identifier = _identifier_value(document_id, "document")
+            if identifier is None:
+                raise ValueError("知识文档编号必须能转换为整数")
+            document = KnowledgeDocument(id=identifier)
             self.session.add(document)
         document.title = title
         document.source = source

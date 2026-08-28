@@ -22,7 +22,7 @@ async def create_patient(payload: PatientCreateRequest) -> PatientCreateResponse
             source_channel="doctor_web",
         )
     return PatientCreateResponse(
-        patient_id=patient.id,
+        patient_id=str(patient.id),
         name=patient.display_name,
         birth_date=patient.birth_date,
         sex=patient.sex or payload.sex,

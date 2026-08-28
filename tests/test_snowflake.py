@@ -49,6 +49,7 @@ def test_every_business_table_uses_a_snowflake_primary_key() -> None:
         primary_key = list(model.__table__.primary_key.columns)
         assert [column.name for column in primary_key] == ["pk_id"]
         assert isinstance(primary_key[0].type, BigInteger)
+        assert isinstance(model.__table__.c.id.type, BigInteger)
         assert model.__table__.c.id.unique
         assert model.__table__.c.auto_id.unique
         assert model.__table__.comment
@@ -62,3 +63,10 @@ def test_every_business_table_uses_a_snowflake_primary_key() -> None:
         assert model.__table__.c.auto_id.unique
         assert model.__table__.comment
         assert all(column.comment for column in model.__table__.columns)
+
+    assert isinstance(MedicalAssessment.__table__.c.reviewer_id.type, BigInteger)
+    assert isinstance(MedicalAssessment.__table__.c.case_id.type, BigInteger)
+    assert all(
+        isinstance(model.__table__.c.patient_id.type, BigInteger)
+        for model in (MedicalVisit, LabResult, ImagingReport, Medication, Allergy, MedicalCase)
+    )

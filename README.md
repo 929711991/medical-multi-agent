@@ -155,7 +155,7 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 ```powershell
 $body = @{
-  patient_id = "PT-CARDIO"
+  patient_id = "200000000000000001"
   question = "患者活动后胸痛两天，有高血压史，请给出辅助判断；如出现压榨性胸痛伴大汗请优先标记风险。"
 } | ConvertTo-Json
 
@@ -174,7 +174,7 @@ $created
 
 ```powershell
 $review = @{
-  reviewer_id = "DEMO-D-001"
+  reviewer_id = "100000000000000001"
   action = "approve"
 } | ConvertTo-Json
 
@@ -191,7 +191,7 @@ Invoke-RestMethod `
 
 ```json
 {
-  "reviewer_id": "DEMO-D-001",
+  "reviewer_id": "100000000000000001",
   "action": "reject",
   "reason": "当前信息不足，请补充查体和复查结果"
 }

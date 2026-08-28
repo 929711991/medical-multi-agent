@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     auth_secret: str = Field(default="development-only-change-me", repr=False)
     login_account: str = "admin"
-    login_doctor_id: str = "DEMO-D-001"
+    login_doctor_id: int = 100000000000000001
     login_password: str = Field(default="111111", repr=False)
     auth_cookie_secure: bool = False
     auth_session_hours: int = 12

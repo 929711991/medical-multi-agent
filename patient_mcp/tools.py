@@ -103,7 +103,7 @@ async def create_patient(
         )
         return {
             "created": True,
-            "patient_id": patient.id,
+            "patient_id": str(patient.id),
             "name": patient.display_name,
             "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
             "sex": patient.sex,
