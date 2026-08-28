@@ -1,0 +1,9 @@
+<script setup lang="ts">
+import { computed } from 'vue'; import { Icon } from '@iconify/vue'; import type { CaseEvent, CaseStatus } from '../../types/case'
+const props = defineProps<{ events: CaseEvent[]; status: CaseStatus }>()
+const labels = ['准备患者资料', '紧急风险筛查', '综合医学分析', '心内科专业分析', '消化科专业分析', '生成辅助诊断']
+const completed = computed(() => new Set(props.events.filter(i => i.status === 'completed').map(i => i.label)))
+const visible = computed(() => labels.filter(label => !label.includes('心内科') && !label.includes('消化科') || completed.value.has(label)))
+</script>
+<template><div class="progress"><div v-for="label in visible" :key="label" :class="{ done: completed.has(label) }"><span><Icon :icon="completed.has(label) ? 'solar:check-circle-bold' : 'solar:clock-circle-linear'" /></span><p>{{ label }}<small>{{ completed.has(label) ? '已完成' : status === 'RUNNING' ? '等待执行' : '未执行' }}</small></p></div><div :class="{ done: status === 'FINAL' || status === 'REJECTED', active: status === 'WAITING_REVIEW' }"><span><Icon :icon="status === 'FINAL' || status === 'REJECTED' ? 'solar:check-circle-bold' : 'solar:user-check-rounded-linear'" /></span><p>等待医生审核<small>{{ status === 'WAITING_REVIEW' ? '需要处理' : status === 'FINAL' || status === 'REJECTED' ? '已完成' : '尚未到达' }}</small></p></div></div></template>
+<style scoped lang="scss">.progress > div { display: grid; grid-template-columns: 28px 1fr; gap: 8px; min-height: 48px; position: relative; }.progress > div::after { content: ''; width: 1px; background: var(--border); position: absolute; left: 13px; top: 28px; bottom: 0; }.progress > div:last-child::after { display: none; }.progress span { color: var(--text-tertiary); font-size: 18px; }.progress p { margin: 1px 0 0; display: grid; gap: 3px; font-size: 12px; }.progress small { color: var(--text-tertiary); }.progress .done span { color: var(--risk-low); }.progress .active span { color: var(--risk-medium); }</style>

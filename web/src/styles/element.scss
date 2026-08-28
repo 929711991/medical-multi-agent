@@ -1,0 +1,9 @@
+.el-button { border-radius: 8px; font-weight: 600; }
+.el-button--primary { --el-button-bg-color: var(--primary); --el-button-border-color: var(--primary); --el-button-hover-bg-color: var(--primary-hover); }
+.el-input__wrapper, .el-select__wrapper, .el-textarea__inner { border-radius: 8px; box-shadow: 0 0 0 1px var(--border) inset; }
+.el-card { --el-card-border-color: transparent; border-radius: var(--radius); box-shadow: var(--shadow); }
+.el-table { --el-table-border-color: var(--border); --el-table-header-bg-color: var(--soft-surface); --el-table-header-text-color: var(--text-secondary); }
+.el-table th.el-table__cell { font-weight: 650; }
+.el-tabs__nav-wrap::after { height: 1px; background: var(--border); }
+.el-drawer { --el-drawer-padding-primary: 24px; }
+.el-skeleton { width: 100%; }

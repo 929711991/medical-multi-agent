@@ -70,6 +70,7 @@ async def get_case(case_id: str) -> CaseResponse:
             question=case.question,
             status=case.status,
             risk_level=case.risk_level,
+            source_channel=case.source_channel,
             ai_result=DiagnosisResult.model_validate(assessment.ai_result_json)
             if assessment and assessment.ai_result_json
             else None,

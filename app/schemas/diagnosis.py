@@ -84,6 +84,7 @@ class CaseResponse(BaseModel):
     question: str
     status: str
     risk_level: RiskLevel | None = None
+    source_channel: str = "doctor_web"
     ai_result: DiagnosisResult | None = None
     doctor_result: DiagnosisResult | None = None
     review_status: str | None = None

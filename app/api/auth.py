@@ -1,0 +1,102 @@
+import base64
+import hashlib
+import hmac
+import json
+import time
+from typing import Annotated
+
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+
+from app.core.config import get_settings
+from app.persistence.database import get_session_factory
+from app.persistence.repositories import DoctorRepository
+from app.schemas.auth import DoctorIdentity, LoginRequest, LoginResponse
+
+router = APIRouter(prefix="/auth", tags=["auth"])
+COOKIE_NAME = "medical_session"
+
+
+def _sign(value: bytes) -> str:
+    return hmac.new(get_settings().auth_secret.encode(), value, hashlib.sha256).hexdigest()
+
+
+def _create_token(doctor_id: str) -> str:
+    payload = json.dumps(
+        {"doctor_id": doctor_id, "exp": int(time.time()) + get_settings().auth_session_hours * 3600},
+        separators=(",", ":"),
+    ).encode()
+    encoded = base64.urlsafe_b64encode(payload).rstrip(b"=")
+    return f"{encoded.decode()}.{_sign(encoded)}"
+
+
+def _read_token(token: str | None) -> str | None:
+    if not token or "." not in token:
+        return None
+    encoded_text, signature = token.rsplit(".", 1)
+    encoded = encoded_text.encode()
+    if not hmac.compare_digest(signature, _sign(encoded)):
+        return None
+    try:
+        padded = encoded + b"=" * (-len(encoded) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded))
+    except (ValueError, json.JSONDecodeError):
+        return None
+    if int(payload.get("exp", 0)) <= int(time.time()):
+        return None
+    doctor_id = payload.get("doctor_id")
+    return doctor_id if isinstance(doctor_id, str) else None
+
+
+async def get_current_doctor(
+    medical_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
+) -> DoctorIdentity:
+    doctor_id = _read_token(medical_session)
+    if not doctor_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
+    async with get_session_factory()() as session:
+        raw = await DoctorRepository(session).info(doctor_id)
+    if not raw.get("found"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
+    return DoctorIdentity(
+        doctor_id=raw["doctor_id"],
+        name=raw["demo_name"],
+        department=raw["department"],
+        title=raw.get("title"),
+    )
+
+
+@router.post("/login", response_model=LoginResponse)
+async def login(payload: LoginRequest, response: Response) -> LoginResponse:
+    if not hmac.compare_digest(payload.password, get_settings().demo_login_password):
+        raise HTTPException(status_code=401, detail="账号或密码错误")
+    async with get_session_factory()() as session:
+        raw = await DoctorRepository(session).info(payload.account)
+    if not raw.get("found"):
+        raise HTTPException(status_code=401, detail="账号或密码错误")
+    user = DoctorIdentity(
+        doctor_id=raw["doctor_id"],
+        name=raw["demo_name"],
+        department=raw["department"],
+        title=raw.get("title"),
+    )
+    response.set_cookie(
+        COOKIE_NAME,
+        _create_token(user.doctor_id),
+        httponly=True,
+        secure=get_settings().auth_cookie_secure,
+        samesite="lax",
+        max_age=get_settings().auth_session_hours * 3600,
+        path="/",
+    )
+    return LoginResponse(user=user)
+
+
+@router.post("/logout", status_code=204)
+async def logout(response: Response) -> None:
+    response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="lax")
+
+
+@router.get("/me", response_model=DoctorIdentity)
+async def me(doctor: DoctorIdentity = Depends(get_current_doctor)) -> DoctorIdentity:
+    return doctor
+

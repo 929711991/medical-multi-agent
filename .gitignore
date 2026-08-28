@@ -9,3 +9,6 @@ htmlcov/
 .idea/
 *.log
 
+# Frontend dependencies and build output
+/web/node_modules/
+/web/dist/

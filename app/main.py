@@ -53,6 +53,13 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        if graph is not None:
+            return {
+                "status": "ok",
+                "service": "医疗辅助多智能体 V1",
+                "llm_configured": bool(get_settings().aliyun_llm_api_key),
+                "rag_enabled": get_settings().rag_enabled,
+            }
         return await collect_health()
 
     @app.exception_handler(Exception)

@@ -1,0 +1,3 @@
+<script setup lang="ts">defineProps<{ title: string; description?: string }>()</script>
+<template><div class="empty"><span class="empty-icon">—</span><strong>{{ title }}</strong><p v-if="description">{{ description }}</p><slot /></div></template>
+<style scoped>.empty { min-height: 150px; display: grid; place-items: center; align-content: center; gap: 8px; color: var(--text-secondary); text-align: center; padding: 24px; }.empty-icon { width: 32px; height: 32px; border-radius: 50%; background: var(--soft-surface); display: grid; place-items: center; }.empty p { margin: 0; font-size: 13px; }</style>
