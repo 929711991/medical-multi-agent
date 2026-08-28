@@ -69,7 +69,7 @@ onMounted(load)
 
       <el-skeleton v-if="loading" :rows="7" animated />
       <ErrorState v-else-if="error" :message="error" @retry="load" />
-      <EmptyState v-else-if="!items.length" title="暂无患者" description="可以点击右上角“添加患者”创建一条虚构 DEMO 患者记录" />
+      <EmptyState v-else-if="!items.length" title="暂无患者" description="可以点击右上角“添加患者”创建患者档案" />
       <template v-else>
         <el-table :data="items">
           <el-table-column label="患者" min-width="190">

@@ -20,11 +20,11 @@ class Patient(Base, TimestampMixin):
     __tablename__ = "patients"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    demo_label: Mapped[str] = mapped_column(String(120), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
     summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    data_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="demo", index=True)
+    data_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="sandbox", index=True)
     source_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="doctor_web", index=True)
 
 
@@ -32,7 +32,7 @@ class Doctor(Base, TimestampMixin):
     __tablename__ = "doctors"
 
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
-    demo_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     department: Mapped[str] = mapped_column(String(120), nullable=False)
     title: Mapped[str | None] = mapped_column(String(120), nullable=True)
 

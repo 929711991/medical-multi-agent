@@ -16,7 +16,16 @@ request.interceptors.response.use(
   },
 )
 
+type ValidationDetail = { msg?: string; loc?: Array<string | number> }
+type ApiErrorBody = { detail?: string | ValidationDetail[] }
+
 export function apiErrorMessage(error: unknown, fallback = '请求失败，请稍后重试'): string {
-  if (axios.isAxiosError<{ detail?: string }>(error)) return error.response?.data?.detail || fallback
+  if (!axios.isAxiosError<ApiErrorBody>(error)) return fallback
+  const detail = error.response?.data?.detail
+  if (typeof detail === 'string' && detail.trim()) return detail
+  if (Array.isArray(detail) && detail.length) {
+    const message = detail[0]?.msg?.replace(/^Value error,\s*/, '').trim()
+    return message || fallback
+  }
   return fallback
 }

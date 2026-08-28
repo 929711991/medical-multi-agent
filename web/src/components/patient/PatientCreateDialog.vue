@@ -10,6 +10,12 @@ const emit = defineEmits<{ 'update:modelValue': [value: boolean]; created: [pati
 const saving = ref(false)
 const form = reactive({ name: '', sex: 'male', birth_date: '', history: '' })
 
+function disableFutureDate(value: Date) {
+  const today = new Date()
+  today.setHours(23, 59, 59, 999)
+  return value.getTime() > today.getTime()
+}
+
 function close() {
   emit('update:modelValue', false)
 }
@@ -46,10 +52,10 @@ async function submit() {
 
 <template>
   <el-dialog :model-value="props.modelValue" title="添加患者" width="560px" @close="close">
-    <el-alert title="V1.1 仅允许录入虚构 DEMO 患者数据" type="warning" :closable="false" show-icon />
+    <el-alert title="请仅录入已获授权且符合当前环境使用规范的患者信息" type="warning" :closable="false" show-icon />
     <el-form label-position="top" class="form" @submit.prevent="submit">
       <el-form-item label="姓名" required>
-        <el-input v-model="form.name" maxlength="120" placeholder="例如：DEMO 张某" />
+        <el-input v-model="form.name" maxlength="120" placeholder="例如：张某" />
       </el-form-item>
       <div class="grid">
         <el-form-item label="性别" required>
@@ -60,7 +66,14 @@ async function submit() {
           </el-select>
         </el-form-item>
         <el-form-item label="出生日期">
-          <el-date-picker v-model="form.birth_date" value-format="YYYY-MM-DD" type="date" style="width: 100%" />
+          <el-date-picker
+            v-model="form.birth_date"
+            value-format="YYYY-MM-DD"
+            type="date"
+            :disabled-date="disableFutureDate"
+            style="width: 100%"
+            placeholder="请选择出生日期"
+          />
         </el-form-item>
       </div>
       <el-form-item label="主要病史">

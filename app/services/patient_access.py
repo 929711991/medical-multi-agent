@@ -9,6 +9,6 @@ class PatientAccessService:
     def __init__(self, session: AsyncSession):
         self.repository = PatientRepository(session)
 
-    async def can_access_demo_patient(self, patient_id: str) -> bool:
-        return await self.repository.data_scope(patient_id) == "demo"
+    async def can_access_patient(self, patient_id: str) -> bool:
+        return await self.repository.data_scope(patient_id) == "sandbox"
 

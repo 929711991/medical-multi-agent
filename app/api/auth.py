@@ -59,7 +59,7 @@ async def get_current_doctor(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
     return DoctorIdentity(
         doctor_id=raw["doctor_id"],
-        name=raw["demo_name"],
+        name=raw["name"],
         department=raw["department"],
         title=raw.get("title"),
     )
@@ -67,7 +67,7 @@ async def get_current_doctor(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest, response: Response) -> LoginResponse:
-    if not hmac.compare_digest(payload.password, get_settings().demo_login_password):
+    if not hmac.compare_digest(payload.password, get_settings().login_password):
         raise HTTPException(status_code=401, detail="账号或密码错误")
     async with get_session_factory()() as session:
         raw = await DoctorRepository(session).info(payload.account)
@@ -75,7 +75,7 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
         raise HTTPException(status_code=401, detail="账号或密码错误")
     user = DoctorIdentity(
         doctor_id=raw["doctor_id"],
-        name=raw["demo_name"],
+        name=raw["name"],
         department=raw["department"],
         title=raw.get("title"),
     )

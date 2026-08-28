@@ -5,18 +5,18 @@ test.skip(process.env.LIVE_FULL_E2E !== 'true', 'requires the local MySQL, MCP a
 test('doctor completes the flow from patient creation to final review', async ({ page }, testInfo) => {
   test.setTimeout(240_000)
   const suffix = Date.now().toString().slice(-8)
-  const patientName = `DEMO 全流程患者 ${suffix}`
+  const patientName = `全流程患者 ${suffix}`
   const question = '患者活动后出现胸痛并伴有出汗，有高血压病史，请进行风险筛查并给出鉴别诊断。'
 
   await page.goto('/login')
-  await page.getByPlaceholder('请输入密码').fill('demo-clinical')
+  await page.getByPlaceholder('请输入密码').fill('clinical-local')
   await page.getByRole('button', { name: '登录工作台' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
 
   await page.getByRole('link', { name: '患者中心' }).click()
   await expect(page.getByRole('heading', { name: '患者中心' })).toBeVisible()
   await page.getByRole('button', { name: /添加患者/ }).click()
-  await page.getByPlaceholder('例如：DEMO 张某').fill(patientName)
+  await page.getByPlaceholder('例如：张某').fill(patientName)
   await page.getByPlaceholder(/每行一条/).fill('高血压病史5年\n近期活动后胸痛')
 
   const patientResponsePromise = page.waitForResponse(
@@ -52,7 +52,7 @@ test('doctor completes the flow from patient creation to final review', async ({
   expect(reviewResponse.status()).toBe(200)
   const reviewed = (await reviewResponse.json()) as { status: string; reviewer_id: string | null }
   expect(reviewed.status).toBe('FINAL')
-  expect(reviewed.reviewer_id).toBe('DEMO-D-001')
+  expect(reviewed.reviewer_id).toBe('DR-001')
 
   await page.getByRole('link', { name: '诊断复盘' }).click()
   await expect(page).toHaveURL(new RegExp(`/cases/${diagnosis.case_id}/history$`))

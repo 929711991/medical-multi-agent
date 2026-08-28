@@ -17,12 +17,12 @@ async def create_patient(payload: PatientCreateRequest) -> PatientCreateResponse
             birth_date=payload.birth_date,
             sex=payload.sex,
             history=payload.history,
-            data_scope="demo",
+            data_scope="sandbox",
             source_channel="doctor_web",
         )
     return PatientCreateResponse(
         patient_id=patient.id,
-        name=patient.demo_label,
+        name=patient.display_name,
         birth_date=patient.birth_date,
         sex=patient.sex or payload.sex,
         history=patient.summary_json.get("history", []),
@@ -43,7 +43,7 @@ async def list_patients(
 
 
 async def _ensure_patient(session, patient_id: str) -> PatientRepository:
-    if not await PatientAccessService(session).can_access_demo_patient(patient_id):
+    if not await PatientAccessService(session).can_access_patient(patient_id):
         raise HTTPException(status_code=404, detail="未找到患者")
     return PatientRepository(session)
 

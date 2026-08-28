@@ -1,7 +1,9 @@
 from contextlib import asynccontextmanager
+import logging
 from typing import Any, AsyncIterator
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from app.api import auth, cases, dashboard, diagnosis, knowledge, patients, review
@@ -12,6 +14,9 @@ from app.mcp.client import get_mcp_manager, reset_mcp_manager
 from app.persistence.checkpoint import mysql_checkpointer
 from app.persistence.database import close_database, initialize_schema
 from app.services.health import collect_health
+
+
+logger = logging.getLogger(__name__)
 
 
 class UTF8JSONResponse(JSONResponse):
@@ -62,9 +67,27 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
             }
         return await collect_health()
 
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        errors = exc.errors()
+        summaries: list[str] = []
+        for item in errors:
+            location = ".".join(str(part) for part in item.get("loc", []))
+            message = str(item.get("msg", "参数校验失败")).removeprefix("Value error, ")
+            summaries.append(f"{location}: {message}")
+        logger.warning(
+            "request_validation_failed method=%s path=%s errors=%s",
+            request.method,
+            request.url.path,
+            " | ".join(summaries),
+        )
+        friendly = summaries[0].split(": ", 1)[-1] if summaries else "提交的信息不符合要求，请检查后重试"
+        return UTF8JSONResponse(status_code=422, content={"detail": friendly})
+
     @app.exception_handler(Exception)
-    async def unhandled_exception(_: Request, exc: Exception) -> JSONResponse:
-        return UTF8JSONResponse(status_code=500, content={"detail": f"服务器内部错误：{type(exc).__name__}"})
+    async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("unhandled_request_error method=%s path=%s", request.method, request.url.path)
+        return UTF8JSONResponse(status_code=500, content={"detail": "服务器处理请求时出现异常，请稍后重试"})
 
     return app
 

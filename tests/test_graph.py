@@ -16,7 +16,7 @@ async def test_specialist_routes(question: str, intent: str, specialty: str) -> 
     graph, _ = make_test_graph()
     thread_id = f"thread-{intent}"
     result = await graph.ainvoke(
-        initial_state(case_id=thread_id, thread_id=thread_id, patient_id="DEMO-P", question=question),
+        initial_state(case_id=thread_id, thread_id=thread_id, patient_id="PT-TEST", question=question),
         graph_config(thread_id),
     )
     assert result["status"] == "WAITING_REVIEW"
@@ -29,7 +29,7 @@ async def test_specialist_routes(question: str, intent: str, specialty: str) -> 
 async def test_none_route() -> None:
     graph, _ = make_test_graph()
     result = await graph.ainvoke(
-        initial_state(case_id="low", thread_id="low", patient_id="DEMO-P", question="轻微鼻塞，无发热"),
+        initial_state(case_id="low", thread_id="low", patient_id="PT-TEST", question="轻微鼻塞，无发热"),
         graph_config("low"),
     )
     assert result["intent"] == "none"
@@ -40,7 +40,7 @@ async def test_none_route() -> None:
 async def test_emergency_rule_overrides_model_risk() -> None:
     graph, _ = make_test_graph()
     result = await graph.ainvoke(
-        initial_state(case_id="em", thread_id="em", patient_id="DEMO-P", question="压榨性胸痛伴大汗"),
+        initial_state(case_id="em", thread_id="em", patient_id="PT-TEST", question="压榨性胸痛伴大汗"),
         graph_config("em"),
     )
     assert result["risk_level"] == "emergency"

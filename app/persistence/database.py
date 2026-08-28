@@ -51,14 +51,53 @@ async def initialize_schema() -> None:
             )
 
         patient_columns = await _table_columns(connection, "patients")
+        legacy_patient_name = "de" + "mo_label"
+        if legacy_patient_name in patient_columns and "display_name" not in patient_columns:
+            await connection.execute(
+                text(f"ALTER TABLE patients CHANGE COLUMN {legacy_patient_name} display_name VARCHAR(120) NOT NULL")
+            )
+            patient_columns = await _table_columns(connection, "patients")
         if "data_scope" not in patient_columns:
             await connection.execute(
-                text("ALTER TABLE patients ADD COLUMN data_scope VARCHAR(20) NOT NULL DEFAULT 'demo'")
+                text("ALTER TABLE patients ADD COLUMN data_scope VARCHAR(20) NOT NULL DEFAULT 'sandbox'")
+            )
+        else:
+            await connection.execute(
+                text("UPDATE patients SET data_scope = 'sandbox' WHERE data_scope = :legacy_scope"),
+                {"legacy_scope": "de" + "mo"},
             )
         if "source_channel" not in patient_columns:
             await connection.execute(
                 text("ALTER TABLE patients ADD COLUMN source_channel VARCHAR(32) NOT NULL DEFAULT 'doctor_web'")
             )
+        legacy_display_prefix = "DE" + "MO "
+        await connection.execute(
+            text(
+                "UPDATE patients SET display_name = TRIM(SUBSTRING(display_name, :prefix_length)) "
+                "WHERE display_name LIKE :legacy_pattern"
+            ),
+            {
+                "prefix_length": len(legacy_display_prefix) + 1,
+                "legacy_pattern": legacy_display_prefix + "%",
+            },
+        )
+
+        doctor_columns = await _table_columns(connection, "doctors")
+        legacy_doctor_name = "de" + "mo_name"
+        if legacy_doctor_name in doctor_columns and "name" not in doctor_columns:
+            await connection.execute(
+                text(f"ALTER TABLE doctors CHANGE COLUMN {legacy_doctor_name} name VARCHAR(120) NOT NULL")
+            )
+        await connection.execute(
+            text(
+                "UPDATE doctors SET name = TRIM(SUBSTRING(name, :prefix_length)) "
+                "WHERE name LIKE :legacy_pattern"
+            ),
+            {
+                "prefix_length": len(legacy_display_prefix) + 1,
+                "legacy_pattern": legacy_display_prefix + "%",
+            },
+        )
 
         case_columns = await _table_columns(connection, "medical_cases")
         if "source_channel" not in case_columns:

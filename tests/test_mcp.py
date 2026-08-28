@@ -18,18 +18,18 @@ def test_mcp_exposes_controlled_write_tools() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_mcp_reads_demo_patient_from_mysql() -> None:
-    result = await get_patient_summary("DEMO-P-CARDIO")
+async def test_mcp_reads_patient_from_mysql() -> None:
+    result = await get_patient_summary("PT-CARDIO")
     assert result["found"] is True
-    assert result["demo_label"] == "DEMO 心内科患者 A"
+    assert result["display_name"] == "心内科患者 A"
 
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_mcp_can_create_and_update_demo_patient() -> None:
+async def test_mcp_can_create_and_update_patient() -> None:
     suffix = uuid4().hex[:8]
     created = await create_patient(
-        name=f"DEMO MCP {suffix}",
+        name=f"MCP 患者 {suffix}",
         sex="male",
         birth_date="1988-05-12",
         history=["高血压病史3年"],
@@ -56,6 +56,6 @@ async def test_streamable_http_mcp_client_reads_structured_data() -> None:
     tool_map = {item.name: item for item in tools}
     assert "get_medical_records" in tool_map
     assert "update_patient" in tool_map
-    structured = await manager.invoke_structured("get_patient_summary", {"patient_id": "DEMO-P-CARDIO"})
+    structured = await manager.invoke_structured("get_patient_summary", {"patient_id": "PT-CARDIO"})
     assert structured["found"] is True
-    assert structured["patient_id"] == "DEMO-P-CARDIO"
+    assert structured["patient_id"] == "PT-CARDIO"

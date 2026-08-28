@@ -5,7 +5,7 @@ from patient_mcp import tools
 mcp = FastMCP(
     "patient-records-controlled-write",
     instructions=(
-        "访问虚构 DEMO 病历。允许受控创建和修改患者基础资料；"
+        "访问授权范围内的患者病历。允许受控创建和修改患者基础资料；"
         "写操作必须经过 Repository 校验与数据库事务，禁止任意 SQL、删除患者和直接开具处方。"
     ),
     host="127.0.0.1",

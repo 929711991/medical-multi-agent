@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 
-const doctor = { doctor_id: 'DEMO-D-001', name: 'DEMO 李医生', department: '心内科', title: '主治医师', role: 'doctor' }
+const doctor = { doctor_id: 'DR-001', name: '李医生', department: '心内科', title: '主治医师', role: 'doctor' }
 
 test.beforeEach(async ({ page }) => {
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ status: 401, json: { detail: '登录已失效' } }))
@@ -10,7 +10,7 @@ test.beforeEach(async ({ page }) => {
 test('doctor login restores the protected workspace', async ({ page }) => {
   await page.route('**/api/v1/dashboard/summary', async (route) => route.fulfill({ json: { today_cases: 3, pending_reviews: 1, high_risk_cases: 1, completed_cases: 2, trend: [], pending_items: [] } }))
   await page.goto('/login')
-  await page.getByPlaceholder('请输入密码').fill('demo-clinical')
+  await page.getByPlaceholder('请输入密码').fill('clinical-local')
   await page.getByRole('button', { name: '登录工作台' }).click()
   await expect(page).toHaveURL(/dashboard/)
   await expect(page.getByText('我的待审核病例')).toBeVisible()

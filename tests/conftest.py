@@ -9,13 +9,13 @@ async def fake_records(patient_id: str) -> dict:
     return {
         "found": True,
         "patient_id": patient_id,
-        "records": {"summary": {"demo": True}, "visits": [], "labs": [], "imaging": []},
+        "records": {"summary": {"sandbox": True}, "visits": [], "labs": [], "imaging": []},
     }
 
 
 async def fake_medical(state: dict, context: dict) -> DiagnosisResult:
     return DiagnosisResult(
-        clinical_summary=f"DEMO patient {state['patient_id']}: {state['user_query']}",
+        clinical_summary=f"patient {state['patient_id']}: {state['user_query']}",
         key_findings=[state["user_query"]],
         possible_conditions=[PossibleCondition(name="待鉴别症状", reason="仅基于当前信息", confidence=0.4)],
         red_flags=state.get("red_flags", []),

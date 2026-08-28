@@ -9,7 +9,7 @@ from tests.conftest import fake_cardiology, fake_gastro, fake_medical, fake_reco
 
 async def _interrupt(graph, thread_id: str):
     result = await graph.ainvoke(
-        initial_state(case_id=thread_id, thread_id=thread_id, patient_id="DEMO-P", question="轻微鼻塞，无发热"),
+        initial_state(case_id=thread_id, thread_id=thread_id, patient_id="PT-TEST", question="轻微鼻塞，无发热"),
         graph_config(thread_id),
     )
     state = await graph.aget_state(graph_config(thread_id))
@@ -23,7 +23,7 @@ async def test_approve_resume_and_history() -> None:
     graph, _ = make_test_graph()
     draft = await _interrupt(graph, "approve")
     result = await graph.ainvoke(
-        Command(resume={"reviewer_id": "DEMO-D", "action": "approve"}), graph_config("approve")
+        Command(resume={"reviewer_id": "DR-TEST", "action": "approve"}), graph_config("approve")
     )
     assert result["status"] == "FINAL"
     assert result["final_assessment"] == draft["draft_assessment"]
@@ -42,7 +42,7 @@ async def test_edit_resume() -> None:
     result = await graph.ainvoke(
         Command(
             resume={
-                "reviewer_id": "DEMO-D",
+                "reviewer_id": "DR-TEST",
                 "action": "edit",
                 "edited_result": edited.model_dump(mode="json"),
                 "reason": "结合查体修订",
@@ -58,7 +58,7 @@ async def test_reject_resume() -> None:
     graph, _ = make_test_graph()
     await _interrupt(graph, "reject")
     result = await graph.ainvoke(
-        Command(resume={"reviewer_id": "DEMO-D", "action": "reject", "reason": "信息不足"}),
+        Command(resume={"reviewer_id": "DR-TEST", "action": "reject", "reason": "信息不足"}),
         graph_config("reject"),
     )
     assert result["status"] == "REJECTED"
@@ -77,6 +77,6 @@ async def test_rebuild_graph_can_resume_same_checkpoint() -> None:
         gastroenterology_runner=fake_gastro,
     )
     result = await rebuilt.ainvoke(
-        Command(resume={"reviewer_id": "DEMO-D", "action": "approve"}), graph_config("restart")
+        Command(resume={"reviewer_id": "DR-TEST", "action": "approve"}), graph_config("restart")
     )
     assert result["status"] == "FINAL"

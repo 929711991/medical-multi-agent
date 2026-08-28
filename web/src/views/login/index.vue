@@ -6,7 +6,7 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { apiErrorMessage } from '../../utils/request'
 
-const form = reactive({ account: 'DEMO-D-001', password: '' })
+const form = reactive({ account: '', password: '' })
 const loading = ref(false); const auth = useAuthStore(); const router = useRouter(); const route = useRoute()
 async function submit() {
   if (!form.account || !form.password) return ElMessage.warning('请输入医生账号和密码')
@@ -23,7 +23,7 @@ async function submit() {
         <div class="wordmark"><span>CA</span> Clinical AI Workspace</div>
         <div class="hero-copy"><p class="eyebrow">医疗 AI 辅助诊断</p><h1>让复杂临床信息<br />回到清晰的决策路径</h1><p>连接患者病历、风险筛查与多专科智能体，为医生提供结构化、可解释、可复盘的辅助意见。</p></div>
         <div class="trust-grid">
-          <div><Icon icon="solar:shield-check-linear" /><strong>安全边界</strong><span>仅访问授权的 DEMO 病历</span></div>
+          <div><Icon icon="solar:shield-check-linear" /><strong>安全边界</strong><span>仅访问当前账号授权范围内的病历</span></div>
           <div><Icon icon="solar:document-text-linear" /><strong>全程可解释</strong><span>保留证据与诊断轨迹</span></div>
           <div><Icon icon="solar:user-check-rounded-linear" /><strong>医生最终审核</strong><span>AI 草稿不会自动成为结论</span></div>
         </div>
@@ -35,7 +35,7 @@ async function submit() {
         <label>医生账号</label><el-input v-model="form.account" size="large" autocomplete="username" placeholder="请输入医生账号"><template #prefix><Icon icon="solar:user-linear" /></template></el-input>
         <label>密码</label><el-input v-model="form.password" size="large" type="password" autocomplete="current-password" show-password placeholder="请输入密码"><template #prefix><Icon icon="solar:lock-password-linear" /></template></el-input>
         <el-button native-type="submit" type="primary" size="large" :loading="loading">登录工作台</el-button>
-        <p class="privacy">本环境仅允许使用完全虚构的 DEMO 患者数据</p>
+        <p class="privacy">请遵循当前环境的数据授权与隐私规范</p>
       </form>
     </section>
   </main>

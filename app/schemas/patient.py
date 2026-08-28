@@ -46,7 +46,7 @@ class PatientCreateResponse(BaseModel):
 class PatientSummary(BaseModel):
     found: bool
     patient_id: str
-    demo_label: str | None = None
+    display_name: str | None = None
     birth_date: date | None = None
     sex: str | None = None
     data: dict[str, Any] = Field(default_factory=dict)

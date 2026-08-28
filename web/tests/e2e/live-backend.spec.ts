@@ -4,17 +4,17 @@ test.skip(process.env.LIVE_E2E !== 'true', 'requires the local MySQL, MCP and Fa
 
 test('real backend supports the doctor read workflow', async ({ page }) => {
   await page.goto('/login')
-  await page.getByPlaceholder('请输入密码').fill('demo-clinical')
+  await page.getByPlaceholder('请输入密码').fill('clinical-local')
   await page.getByRole('button', { name: '登录工作台' }).click()
   await expect(page).toHaveURL(/dashboard/)
   await expect(page.getByText('我的待审核病例')).toBeVisible()
 
   await page.getByRole('link', { name: '患者中心' }).click()
-  await page.getByPlaceholder('搜索患者姓名或编号').fill('DEMO-P-GASTRO')
+  await page.getByPlaceholder('搜索患者姓名或编号').fill('PT-GASTRO')
   await page.getByRole('button', { name: '查询' }).click()
-  await expect(page.getByText('DEMO 消化科患者 B')).toBeVisible()
+  await expect(page.getByText('消化科患者 B')).toBeVisible()
   await page.getByRole('button', { name: '查看档案' }).click()
-  await expect(page).toHaveURL(/patients\/DEMO-P-GASTRO/)
+  await expect(page).toHaveURL(/patients\/PT-GASTRO/)
   await expect(page.getByRole('button', { name: '发起 AI 辅助诊断' })).toBeVisible()
 
   await page.getByRole('link', { name: 'AI 辅助诊断' }).click()

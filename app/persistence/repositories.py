@@ -38,17 +38,17 @@ class PatientRepository:
         birth_date: date | None,
         sex: str,
         history: list[str],
-        data_scope: str = "demo",
+        data_scope: str = "sandbox",
         source_channel: str = "doctor_web",
     ) -> Patient:
         patient = Patient(
-            id=f"DEMO-P-{uuid4().hex[:12].upper()}",
-            demo_label=name.strip(),
+            id=f"PT-{uuid4().hex[:12].upper()}",
+            display_name=name.strip(),
             birth_date=birth_date,
             sex=sex,
             summary_json={
                 "history": [item.strip() for item in history if item.strip()],
-                "demo": data_scope == "demo",
+                "sandbox": data_scope == "sandbox",
             },
             data_scope=data_scope,
             source_channel=source_channel,
@@ -71,7 +71,7 @@ class PatientRepository:
         if patient is None:
             return None
         if name is not None:
-            patient.demo_label = name.strip()
+            patient.display_name = name.strip()
         if birth_date is not None:
             patient.birth_date = birth_date
         if sex is not None:
@@ -87,10 +87,10 @@ class PatientRepository:
     async def list(
         self, *, page: int = 1, page_size: int = 20, search: str | None = None, sex: str | None = None
     ) -> dict[str, Any]:
-        filters = [Patient.data_scope == "demo"]
+        filters = [Patient.data_scope == "sandbox"]
         if search:
             term = f"%{search.strip()}%"
-            filters.append(or_(Patient.id.like(term), Patient.demo_label.like(term)))
+            filters.append(or_(Patient.id.like(term), Patient.display_name.like(term)))
         if sex:
             filters.append(Patient.sex == sex)
         total = await self.session.scalar(select(func.count()).select_from(Patient).where(*filters)) or 0
@@ -117,7 +117,7 @@ class PatientRepository:
             ) if patient.birth_date else None
             items.append({
                 "patient_id": patient.id,
-                "name": patient.demo_label,
+                "name": patient.display_name,
                 "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
                 "age": age,
                 "sex": patient.sex,
@@ -136,7 +136,7 @@ class PatientRepository:
         return {
             "found": True,
             "patient_id": patient.id,
-            "demo_label": patient.demo_label,
+            "display_name": patient.display_name,
             "birth_date": patient.birth_date.isoformat() if patient.birth_date else None,
             "sex": patient.sex,
             "summary": patient.summary_json,
@@ -251,7 +251,7 @@ class DoctorRepository:
         return {
             "found": True,
             "doctor_id": doctor.id,
-            "demo_name": doctor.demo_name,
+            "name": doctor.name,
             "department": doctor.department,
             "title": doctor.title,
         }
@@ -307,12 +307,12 @@ class CaseRepository:
         statement = select(MedicalCase).options(selectinload(MedicalCase.assessments))
         if search:
             term = f"%{search.strip()}%"
-            statement = statement.join(Patient).where(or_(MedicalCase.id.like(term), Patient.demo_label.like(term)))
+            statement = statement.join(Patient).where(or_(MedicalCase.id.like(term), Patient.display_name.like(term)))
         statement = statement.where(*filters)
         total_statement = select(func.count()).select_from(MedicalCase).where(*filters)
         if search:
             total_statement = total_statement.join(Patient).where(
-                or_(MedicalCase.id.like(term), Patient.demo_label.like(term))
+                or_(MedicalCase.id.like(term), Patient.display_name.like(term))
             )
         total = await self.session.scalar(total_statement) or 0
         if pending_only:
@@ -333,7 +333,7 @@ class CaseRepository:
             items.append({
                 "id": row.id,
                 "patient_id": row.patient_id,
-                "patient_name": patient.demo_label if patient else row.patient_id,
+                "patient_name": patient.display_name if patient else row.patient_id,
                 "question": row.question,
                 "status": row.status,
                 "risk_level": row.risk_level,

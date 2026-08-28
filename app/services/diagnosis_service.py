@@ -16,7 +16,7 @@ class DiagnosisService:
         case_id = str(uuid4())
         thread_id = case_id
         async with get_session_factory()() as session:
-            if not await PatientAccessService(session).can_access_demo_patient(patient_id):
+            if not await PatientAccessService(session).can_access_patient(patient_id):
                 raise LookupError("未找到患者")
             repository = CaseRepository(session)
             await repository.create(

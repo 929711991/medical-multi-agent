@@ -17,8 +17,8 @@ async def test_real_llm_mcp_graph_reaches_doctor_review() -> None:
             initial_state(
                 case_id=thread_id,
                 thread_id=thread_id,
-                patient_id="DEMO-P-CARDIO",
-                question="DEMO 患者活动后胸痛两天，有高血压史，请提供辅助诊断意见。",
+                patient_id="PT-CARDIO",
+                question="患者活动后胸痛两天，有高血压史，请提供辅助诊断意见。",
             ),
             graph_config(thread_id),
         )

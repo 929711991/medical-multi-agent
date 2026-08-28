@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     tool_call_limit: int = 20
     log_level: str = "INFO"
     auth_secret: str = Field(default="development-only-change-me", repr=False)
-    demo_login_password: str = Field(default="demo-clinical", repr=False)
+    login_password: str = Field(default="clinical-local", repr=False)
     auth_cookie_secure: bool = False
     auth_session_hours: int = 12
 

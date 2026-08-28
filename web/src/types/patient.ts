@@ -26,10 +26,10 @@ export interface PatientCreated extends PatientCreatePayload {
 export interface PatientSummary {
   found: boolean
   patient_id: string
-  demo_label: string | null
+  display_name: string | null
   birth_date: string | null
   sex: string | null
-  summary: { history?: string[]; privacy?: string; demo?: boolean }
+  summary: { history?: string[]; privacy?: string; sandbox?: boolean }
 }
 export interface Visit { id: number; visit_time: string; department: string; chief_complaint: string; record: Record<string, string | boolean> }
 export interface LabResult { id: number; observed_at: string; test_name: string; value: string; reference_range: string | null; abnormal_flag: string | null }
