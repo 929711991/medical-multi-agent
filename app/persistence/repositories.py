@@ -23,15 +23,19 @@ from app.persistence.models import (
 
 class PatientRepository:
     def __init__(self, session: AsyncSession):
+        """将患者数据操作绑定到当前事务会话。"""
         self.session = session
 
     async def exists(self, patient_id: str) -> bool:
+        """判断患者业务编号是否存在。"""
         return await self._get(patient_id) is not None
 
     async def _get(self, patient_id: str) -> Patient | None:
+        """根据稳定的对外业务编号读取患者。"""
         return await self.session.scalar(select(Patient).where(Patient.id == patient_id))
 
     async def data_scope(self, patient_id: str) -> str | None:
+        """读取患者访问控制使用的数据隔离范围。"""
         patient = await self._get(patient_id)
         return patient.data_scope if patient else None
 
@@ -45,6 +49,7 @@ class PatientRepository:
         data_scope: str = "sandbox",
         source_channel: str = "doctor_web",
     ) -> Patient:
+        """创建沙箱患者，并分配低碰撞概率的业务编号。"""
         patient = Patient(
             id=f"PT-{uuid4().hex[:12].upper()}",
             display_name=name.strip(),
@@ -71,6 +76,7 @@ class PatientRepository:
         sex: str | None = None,
         history: list[str] | None = None,
     ) -> Patient | None:
+        """患者存在时更新允许修改的档案字段。"""
         patient = await self._get(patient_id)
         if patient is None:
             return None
@@ -91,6 +97,7 @@ class PatientRepository:
     async def list(
         self, *, page: int = 1, page_size: int = 20, search: str | None = None, sex: str | None = None
     ) -> dict[str, Any]:
+        """返回经过筛选和分页的患者工作列表。"""
         filters = [Patient.data_scope == "sandbox"]
         if search:
             term = f"%{search.strip()}%"
@@ -134,6 +141,7 @@ class PatientRepository:
         return {"items": items, "page": page, "page_size": page_size, "total": total}
 
     async def summary(self, patient_id: str) -> dict[str, Any]:
+        """返回 API 和 MCP 共用的标准化患者摘要。"""
         patient = await self._get(patient_id)
         if patient is None:
             return {"found": False, "patient_id": patient_id, "message": "未找到患者"}
@@ -149,6 +157,7 @@ class PatientRepository:
         }
 
     async def visits(self, patient_id: str) -> dict[str, Any]:
+        """按时间倒序返回患者就诊记录。"""
         return await self._records(
             patient_id,
             MedicalVisit,
@@ -163,6 +172,7 @@ class PatientRepository:
         )
 
     async def labs(self, patient_id: str) -> dict[str, Any]:
+        """按时间倒序返回患者检验结果。"""
         return await self._records(
             patient_id,
             LabResult,
@@ -178,6 +188,7 @@ class PatientRepository:
         )
 
     async def imaging(self, patient_id: str) -> dict[str, Any]:
+        """按时间倒序返回患者影像报告。"""
         return await self._records(
             patient_id,
             ImagingReport,
@@ -193,6 +204,7 @@ class PatientRepository:
         )
 
     async def medications(self, patient_id: str) -> dict[str, Any]:
+        """按时间倒序返回患者用药记录。"""
         return await self._records(
             patient_id,
             Medication,
@@ -208,6 +220,7 @@ class PatientRepository:
         )
 
     async def allergies(self, patient_id: str) -> dict[str, Any]:
+        """按时间倒序返回患者过敏记录。"""
         return await self._records(
             patient_id,
             Allergy,
@@ -222,6 +235,7 @@ class PatientRepository:
         )
 
     async def all_records(self, patient_id: str) -> dict[str, Any]:
+        """聚合 MCP 检索所需的全部临床记录类型。"""
         if not await self.exists(patient_id):
             return {"found": False, "patient_id": patient_id, "message": "未找到患者", "records": {}}
         return {
@@ -238,6 +252,7 @@ class PatientRepository:
         }
 
     async def _records(self, patient_id: str, model: Any, order: Any, serializer: Any) -> dict[str, Any]:
+        """以统一方式读取并序列化一种临床记录。"""
         if not await self.exists(patient_id):
             return {"found": False, "patient_id": patient_id, "message": "未找到患者", "items": []}
         rows = (await self.session.scalars(select(model).where(model.patient_id == patient_id).order_by(order.desc()))).all()
@@ -246,9 +261,11 @@ class PatientRepository:
 
 class DoctorRepository:
     def __init__(self, session: AsyncSession):
+        """将医生身份操作绑定到当前事务会话。"""
         self.session = session
 
     async def info(self, doctor_id: str) -> dict[str, Any]:
+        """根据医生业务编号返回对外身份信息。"""
         doctor = await self.session.scalar(select(Doctor).where(Doctor.id == doctor_id))
         if doctor is None:
             return {"found": False, "doctor_id": doctor_id, "message": "未找到医生"}
@@ -261,6 +278,7 @@ class DoctorRepository:
         }
 
     async def authenticate(self, account: str, password: str) -> dict[str, Any]:
+        """使用落库账号和 PBKDF2 密码摘要验证医生身份。"""
         doctor = await self.session.scalar(select(Doctor).where(Doctor.account == account))
         if doctor is None or not verify_password(password, doctor.password_hash):
             return {"found": False, "doctor_id": account, "message": "invalid login credentials"}
@@ -276,6 +294,7 @@ class DoctorRepository:
 
 class CaseRepository:
     def __init__(self, session: AsyncSession):
+        """将诊断病例操作绑定到当前事务会话。"""
         self.session = session
 
     async def create(
@@ -287,6 +306,7 @@ class CaseRepository:
         question: str,
         source_channel: str = "doctor_web",
     ) -> MedicalCase:
+        """在同一事务中创建病例及其初始待审核评估。"""
         case = MedicalCase(
             id=case_id,
             patient_id=patient_id,
@@ -301,6 +321,7 @@ class CaseRepository:
         return case
 
     async def get(self, case_id: str) -> MedicalCase | None:
+        """根据对外病例编号读取病例及其评估。"""
         statement = select(MedicalCase).where(MedicalCase.id == case_id).options(selectinload(MedicalCase.assessments))
         return (await self.session.scalars(statement)).first()
 
@@ -314,6 +335,7 @@ class CaseRepository:
         search: str | None = None,
         pending_only: bool = False,
     ) -> dict[str, Any]:
+        """返回带患者展示信息的病例列表或审核队列分页。"""
         filters = []
         if pending_only:
             filters.append(MedicalCase.status == "WAITING_REVIEW")
@@ -363,6 +385,7 @@ class CaseRepository:
         return {"items": items, "page": page, "page_size": page_size, "total": total}
 
     async def set_draft(self, case_id: str, result: dict[str, Any], risk_level: str) -> None:
+        """保存 AI 草稿，并将病例移入医生审核队列。"""
         case = await self.get(case_id)
         if case is None:
             raise LookupError("未找到病例")
@@ -372,6 +395,7 @@ class CaseRepository:
         await self.session.commit()
 
     async def claim_review(self, case_id: str, expected_version: int) -> bool:
+        """通过递增评估版本号获取乐观审核锁。"""
         case = await self.get(case_id)
         if case is None or case.status != "WAITING_REVIEW" or not case.assessments:
             return False
@@ -389,6 +413,7 @@ class CaseRepository:
         return result.rowcount == 1
 
     async def set_status(self, case_id: str, status: str) -> None:
+        """保存已有病例的工作流状态变化。"""
         case = await self.get(case_id)
         if case is None:
             raise LookupError("未找到病例")
@@ -404,6 +429,7 @@ class CaseRepository:
         result: dict[str, Any] | None,
         reason: str | None,
     ) -> None:
+        """保存医生最终结论，并完成或驳回病例。"""
         case = await self.get(case_id)
         if case is None:
             raise LookupError("未找到病例")
@@ -419,14 +445,17 @@ class CaseRepository:
 
 class KnowledgeRepository:
     def __init__(self, session: AsyncSession):
+        """将知识文档状态操作绑定到当前会话。"""
         self.session = session
 
     async def get(self, document_id: str) -> KnowledgeDocument | None:
+        """根据对外文档编号读取知识文档。"""
         return await self.session.scalar(
             select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
         )
 
     async def count_ready(self) -> int:
+        """统计已经完成向量入库的文档数量。"""
         return int(
             await self.session.scalar(
                 select(func.count()).select_from(KnowledgeDocument).where(KnowledgeDocument.status == "READY")
@@ -435,6 +464,7 @@ class KnowledgeRepository:
         )
 
     async def list(self, *, page: int = 1, page_size: int = 50) -> dict[str, Any]:
+        """返回分页的知识文档入库状态列表。"""
         total = int(await self.session.scalar(select(func.count()).select_from(KnowledgeDocument)) or 0)
         rows = (
             await self.session.scalars(
@@ -478,6 +508,7 @@ class KnowledgeRepository:
         status: str,
         chunk_count: int,
     ) -> KnowledgeDocument:
+        """新增或更新文档的持久化入库状态。"""
         document = await self.get(document_id)
         if document is None:
             document = KnowledgeDocument(id=document_id)
@@ -495,6 +526,7 @@ class KnowledgeRepository:
 
 
 def _specialty_from_result(result: dict[str, Any] | None) -> str | None:
+    """从结构化诊断结果中提取第一个专科标签。"""
     if not result:
         return None
     opinions = result.get("specialist_opinions") or []

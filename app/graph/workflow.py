@@ -26,6 +26,7 @@ def build_diagnosis_graph(
     cardiology_runner: CardiologyRunner | None = None,
     gastroenterology_runner: GastroRunner | None = None,
 ):
+    """编译诊断工作流及其专科子图。"""
     workflow = StateGraph(DiagnosisState)
     workflow.add_node("prepare", observed_node("prepare", prepare_node))
     workflow.add_node("risk_screening", observed_node("risk_screening", risk_screening_node))
@@ -62,6 +63,7 @@ def build_diagnosis_graph(
 
 
 def initial_state(*, case_id: str, thread_id: str, patient_id: str, question: str) -> DiagnosisState:
+    """为新的诊断任务创建标准化初始状态。"""
     return {
         "case_id": case_id,
         "thread_id": thread_id,
@@ -73,4 +75,5 @@ def initial_state(*, case_id: str, thread_id: str, patient_id: str, question: st
 
 
 def graph_config(thread_id: str) -> dict[str, Any]:
+    """为持久化线程生成 LangGraph 检查点配置。"""
     return {"configurable": {"thread_id": thread_id}}

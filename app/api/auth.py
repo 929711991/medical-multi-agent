@@ -17,10 +17,12 @@ COOKIE_NAME = "medical_session"
 
 
 def _sign(value: bytes) -> str:
+    """为编码后的会话载荷生成 HMAC 签名。"""
     return hmac.new(get_settings().auth_secret.encode(), value, hashlib.sha256).hexdigest()
 
 
 def _create_token(doctor_id: str) -> str:
+    """为医生业务编号生成带签名和过期时间的会话令牌。"""
     payload = json.dumps(
         {"doctor_id": doctor_id, "exp": int(time.time()) + get_settings().auth_session_hours * 3600},
         separators=(",", ":"),
@@ -30,6 +32,7 @@ def _create_token(doctor_id: str) -> str:
 
 
 def _read_token(token: str | None) -> str | None:
+    """校验会话令牌，并在有效时返回医生业务编号。"""
     if not token or "." not in token:
         return None
     encoded_text, signature = token.rsplit(".", 1)
@@ -50,6 +53,7 @@ def _read_token(token: str | None) -> str | None:
 async def get_current_doctor(
     medical_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ) -> DoctorIdentity:
+    """根据签名会话 Cookie 解析当前已登录医生。"""
     doctor_id = _read_token(medical_session)
     if not doctor_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
@@ -67,6 +71,7 @@ async def get_current_doctor(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest, response: Response) -> LoginResponse:
+    """验证已落库的医生账号，并签发仅限 HTTP 访问的 Cookie。"""
     settings = get_settings()
     if not hmac.compare_digest(payload.password, settings.login_password):
         raise HTTPException(status_code=401, detail="账号或密码错误")
@@ -96,9 +101,11 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
 
 @router.post("/logout", status_code=204)
 async def logout(response: Response) -> None:
+    """清除浏览器中的身份认证 Cookie。"""
     response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="lax")
 
 
 @router.get("/me", response_model=DoctorIdentity)
 async def me(doctor: DoctorIdentity = Depends(get_current_doctor)) -> DoctorIdentity:
+    """返回当前已登录医生的对外身份信息。"""
     return doctor

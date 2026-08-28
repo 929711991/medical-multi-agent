@@ -50,9 +50,15 @@ def test_every_business_table_uses_a_snowflake_primary_key() -> None:
         assert [column.name for column in primary_key] == ["pk_id"]
         assert isinstance(primary_key[0].type, BigInteger)
         assert model.__table__.c.id.unique
+        assert model.__table__.c.auto_id.unique
+        assert model.__table__.comment
+        assert all(column.comment for column in model.__table__.columns)
 
     for model in numeric_models:
         primary_key = list(model.__table__.primary_key.columns)
         assert [column.name for column in primary_key] == ["id"]
         assert isinstance(primary_key[0].type, BigInteger)
         assert primary_key[0].autoincrement is False
+        assert model.__table__.c.auto_id.unique
+        assert model.__table__.comment
+        assert all(column.comment for column in model.__table__.columns)

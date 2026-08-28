@@ -8,27 +8,32 @@ from app.core.config import get_settings
 
 
 def _decode(value: Any) -> str:
+    """将 Redis 返回的字节值统一解码为字符串。"""
     if isinstance(value, bytes):
         return value.decode("utf-8")
     return str(value)
 
 
 def _vector_blob(vector: list[float]) -> bytes:
+    """将浮点向量编码为 Redis 向量索引使用的二进制数据。"""
     if not vector:
         raise ValueError("向量不能为空")
     return struct.pack(f"<{len(vector)}f", *vector)
 
 
 def _escape_tag(value: str) -> str:
+    """转义 RediSearch 标签字段中的特殊字符。"""
     return "".join(character if character.isalnum() or character == "_" else f"\\{character}" for character in value)
 
 
 @lru_cache
 def _client() -> Redis:
+    """延迟创建并缓存异步 Redis 客户端。"""
     return Redis.from_url(get_settings().redis_url, decode_responses=False)
 
 
 async def health() -> bool:
+    """通过 PING 检查 Redis 连接是否可用。"""
     try:
         client = _client()
         if not await client.ping():
@@ -40,6 +45,7 @@ async def health() -> bool:
 
 
 async def has_index() -> bool:
+    """判断配置的 RediSearch 向量索引是否存在。"""
     settings = get_settings()
     try:
         indexes = await _client().execute_command("FT._LIST")
@@ -50,6 +56,7 @@ async def has_index() -> bool:
 
 
 async def ensure_index(dimension: int) -> None:
+    """按指定向量维度创建知识库索引及其字段定义。"""
     if dimension <= 0:
         raise ValueError("向量维度必须大于 0")
     if await has_index():
@@ -102,6 +109,7 @@ async def ensure_index(dimension: int) -> None:
 
 
 async def upsert(rows: list[dict[str, Any]]) -> None:
+    """批量写入知识块及其向量，覆盖同一块的旧内容。"""
     if not rows:
         return
     settings = get_settings()
@@ -123,6 +131,7 @@ async def upsert(rows: list[dict[str, Any]]) -> None:
 
 
 async def delete_document(document_id: str) -> None:
+    """删除指定文档对应的全部知识块。"""
     if not await has_index():
         return
     settings = get_settings()
@@ -142,6 +151,7 @@ async def delete_document(document_id: str) -> None:
 
 
 async def search(vector: list[float], limit: int) -> list[dict[str, Any]]:
+    """使用向量 KNN 查询返回最相近的知识块。"""
     if limit <= 0:
         return []
     settings = get_settings()
@@ -190,10 +200,12 @@ async def search(vector: list[float], limit: int) -> list[dict[str, Any]]:
 
 
 async def close() -> None:
+    """关闭缓存的 Redis 客户端连接。"""
     client = _client()
     await client.aclose()
     _client.cache_clear()
 
 
 def reset_redis_client() -> None:
+    """清除 Redis 客户端缓存，供测试或配置刷新使用。"""
     _client.cache_clear()

@@ -3,6 +3,7 @@ from app.schemas.diagnosis import DiagnosisResult, PossibleCondition, Specialist
 
 
 async def synthesis_node(state: DiagnosisState) -> dict:
+    """合并综合医学与专科意见，形成可审核草稿。"""
     draft = DiagnosisResult.model_validate(state["draft_assessment"])
     findings = list(draft.key_findings)
     tests = list(draft.recommended_tests)
@@ -34,6 +35,7 @@ async def synthesis_node(state: DiagnosisState) -> dict:
 
 
 def _dedupe_conditions(items: list[PossibleCondition]) -> list[PossibleCondition]:
+    """合并重复的候选疾病，并保留首次出现顺序。"""
     seen: dict[str, PossibleCondition] = {}
     for item in items:
         existing = seen.get(item.name)

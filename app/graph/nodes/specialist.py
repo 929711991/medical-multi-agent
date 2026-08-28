@@ -5,6 +5,7 @@ GASTRO_TERMS = ("腹痛", "恶心", "呕吐", "腹泻", "黑便", "胃", "消化
 
 
 async def specialist_router_node(state: DiagnosisState) -> dict:
+    """将选定的专科路由标准化后写入图状态。"""
     searchable = f"{state['user_query']} {state.get('patient_context', {})} {state.get('draft_assessment', {})}"
     cardio_score = sum(term in searchable for term in CARDIOLOGY_TERMS)
     gastro_score = sum(term in searchable for term in GASTRO_TERMS)
@@ -18,5 +19,5 @@ async def specialist_router_node(state: DiagnosisState) -> dict:
 
 
 def route_specialist(state: DiagnosisState) -> str:
+    """选择专科分支，普通病例则跳过专科分析。"""
     return state.get("intent", "none")
-

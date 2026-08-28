@@ -12,6 +12,7 @@ const status = ref<KnowledgeStatus | null>(null)
 const documents = ref<KnowledgeDocument[]>([])
 
 async function load() {
+  // 状态和文档列表并行请求，确保页面展示的是同一时刻的知识库信息。
   loading.value = true
   error.value = ''
   try {

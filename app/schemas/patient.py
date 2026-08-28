@@ -13,6 +13,7 @@ class PatientCreateRequest(BaseModel):
     @field_validator("name")
     @classmethod
     def normalize_name(cls, value: str) -> str:
+        """清理患者姓名首尾空白并拒绝空姓名。"""
         value = value.strip()
         if not value:
             raise ValueError("姓名不能为空")
@@ -21,6 +22,7 @@ class PatientCreateRequest(BaseModel):
     @field_validator("birth_date")
     @classmethod
     def birth_date_not_future(cls, value: date | None) -> date | None:
+        """拒绝晚于当前日期的出生日期。"""
         if value and value > date.today():
             raise ValueError("出生日期不能晚于今天，请重新选择")
         return value

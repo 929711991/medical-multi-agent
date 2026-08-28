@@ -23,8 +23,11 @@ const metrics = computed(() => data.value ? [
   { label: '高风险', value: data.value.high_risk_cases, icon: 'solar:danger-triangle-linear', tone: 'orange' },
   { label: '已完成', value: data.value.completed_cases, icon: 'solar:check-circle-linear', tone: 'green' },
 ] : [])
+// 先加载统计数据，再等待图表容器完成渲染后绘制趋势图。
 async function load() { loading.value = true; error.value = ''; try { data.value = await getDashboardSummary(); await nextTick(); draw() } catch { error.value = '无法获取工作台统计' } finally { loading.value = false } }
+// 销毁旧实例后重绘，避免切换页面或重复加载造成图表实例泄漏。
 function draw() { if (!chartEl.value || !data.value) return; chart?.dispose(); chart = echarts.init(chartEl.value); chart.setOption({ grid: { left: 32, right: 18, top: 20, bottom: 28 }, tooltip: { trigger: 'axis' }, xAxis: { type: 'category', data: data.value.trend.map(i => i.date.slice(5)), axisLine: { lineStyle: { color: '#e7eaf0' } }, axisLabel: { color: '#98a2b3' } }, yAxis: { type: 'value', minInterval: 1, splitLine: { lineStyle: { color: '#eef1f5' } }, axisLabel: { color: '#98a2b3' } }, series: [{ type: 'line', data: data.value.trend.map(i => i.count), smooth: true, symbolSize: 7, lineStyle: { color: '#2563eb', width: 3 }, itemStyle: { color: '#2563eb' }, areaStyle: { color: 'rgba(37,99,235,.08)' } }] }) }
+// 窗口尺寸变化时让图表跟随容器调整，并在组件销毁时解除监听。
 const resize = () => chart?.resize(); onMounted(() => { load(); addEventListener('resize', resize) }); onBeforeUnmount(() => { chart?.dispose(); removeEventListener('resize', resize) })
 </script>
 <template>

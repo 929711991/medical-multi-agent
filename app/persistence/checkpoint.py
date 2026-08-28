@@ -10,6 +10,7 @@ from app.core.config import get_settings
 
 @asynccontextmanager
 async def mysql_checkpointer() -> AsyncIterator[AsyncMySaver]:
+    """提供已完成结构初始化的 MySQL 检查点保存器。"""
     async with AsyncMySaver.from_conn_string(get_settings().checkpoint_url) as saver:
         await saver.setup()
         await _ensure_mysql8_checkpoint_collation(saver)
@@ -17,6 +18,7 @@ async def mysql_checkpointer() -> AsyncIterator[AsyncMySaver]:
 
 
 def memory_checkpointer() -> InMemorySaver:
+    """创建适用于本地测试的内存检查点保存器。"""
     return InMemorySaver()
 
 

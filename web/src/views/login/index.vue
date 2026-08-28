@@ -9,6 +9,7 @@ import { apiErrorMessage } from '../../utils/request'
 const form = reactive({ account: 'admin', password: '' })
 const loading = ref(false); const auth = useAuthStore(); const router = useRouter(); const route = useRoute()
 async function submit() {
+  // 登录请求期间锁定按钮，成功后回到原始页面或默认工作台。
   if (!form.account || !form.password) return ElMessage.warning('请输入医生账号和密码')
   loading.value = true
   try { await auth.login(form); await router.replace(String(route.query.redirect || '/dashboard')) }

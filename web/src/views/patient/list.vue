@@ -20,6 +20,7 @@ const filters = reactive({ search: '', sex: '' })
 const page = reactive({ page: 1, page_size: 20, total: 0 })
 
 async function load() {
+  // 重新读取筛选结果，并同步列表加载状态与总数。
   loading.value = true
   error.value = ''
   try {
@@ -38,11 +39,13 @@ async function load() {
 }
 
 function search() {
+  // 搜索条件变化后回到第一页，避免当前页超出新的结果范围。
   page.page = 1
   load()
 }
 
 async function openCreatedPatient(patientId: string) {
+  // 创建成功后直接进入新患者档案，减少再次检索的操作步骤。
   await router.push(`/patients/${patientId}`)
 }
 

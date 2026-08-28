@@ -11,12 +11,14 @@ EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
 def redact_pii(value: str) -> str:
+    """在写入应用日志前遮盖常见的直接身份标识。"""
     value = PHONE_RE.sub("[REDACTED_PHONE]", value)
     return EMAIL_RE.sub("[REDACTED_EMAIL]", value)
 
 
 class JsonFormatter(logging.Formatter):
     def format(self, record: logging.LogRecord) -> str:
+        """将日志记录序列化为已脱敏的 JSON 对象。"""
         payload: dict[str, Any] = {
             "timestamp": datetime.now(UTC).isoformat(),
             "level": record.levelname,
@@ -32,10 +34,10 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
+    """按照配置日志级别安装结构化 JSON 处理器。"""
     handler = logging.StreamHandler()
     handler.setFormatter(JsonFormatter())
     root = logging.getLogger()
     root.handlers.clear()
     root.addHandler(handler)
     root.setLevel(get_settings().log_level.upper())
-

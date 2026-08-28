@@ -18,6 +18,7 @@ MEDICAL_SYSTEM_PROMPT = """你是 MedicalSupervisor 医疗辅助决策智能体�
 
 
 def create_medical_supervisor(mcp_tools: list[BaseTool]):
+    """使用受控 MCP 工具创建综合医学监督智能体。"""
     return create_deep_agent(
         model=get_llm(),
         tools=[*mcp_tools, search_medical_knowledge],
@@ -26,4 +27,3 @@ def create_medical_supervisor(mcp_tools: list[BaseTool]):
         response_format=DiagnosisResult,
         name="medical_supervisor",
     )
-

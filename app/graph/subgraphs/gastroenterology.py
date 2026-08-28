@@ -11,6 +11,7 @@ SpecialistRunner = Callable[[DiagnosisState], Awaitable[SpecialistOpinion]]
 
 
 async def run_gastroenterology_agent(state: DiagnosisState) -> SpecialistOpinion:
+    """运行消化内科智能体并返回结构化专科意见。"""
     agent = create_gastroenterology_agent()
     response = await agent.ainvoke(
         {"messages": [{"role": "user", "content": json.dumps(state["specialist_context"], ensure_ascii=False)}]}
@@ -20,9 +21,11 @@ async def run_gastroenterology_agent(state: DiagnosisState) -> SpecialistOpinion
 
 
 def build_gastroenterology_subgraph(runner: SpecialistRunner | None = None):
+    """构建可替换运行器的消化内科分析子图。"""
     selected = runner or run_gastroenterology_agent
 
     async def prepare_specialist_context(state: DiagnosisState) -> dict:
+        """整理消化内科分析所需的患者和综合医学上下文。"""
         return {
             "current_stage": "gastroenterology_prepare",
             "specialist_context": {
@@ -35,10 +38,12 @@ def build_gastroenterology_subgraph(runner: SpecialistRunner | None = None):
         }
 
     async def specialist_agent(state: DiagnosisState) -> dict:
+        """调用消化内科运行器生成专科意见。"""
         result = await selected(state)
         return {"current_stage": "gastroenterology_agent", "specialist_result": result.model_dump(mode="json")}
 
     async def specialist_result(state: DiagnosisState) -> dict:
+        """把消化内科意见写回统一图状态。"""
         return {
             "current_stage": "gastroenterology_result",
             "specialist_opinions": [*state.get("specialist_opinions", []), state["specialist_result"]],
@@ -53,4 +58,3 @@ def build_gastroenterology_subgraph(runner: SpecialistRunner | None = None):
     graph.add_edge("specialist_agent", "specialist_result")
     graph.add_edge("specialist_result", END)
     return graph.compile()
-

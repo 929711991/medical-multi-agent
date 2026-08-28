@@ -7,6 +7,7 @@ from app.schemas.evidence import KnowledgeEvidence, KnowledgeSearchResult
 
 
 async def search(query: str) -> KnowledgeSearchResult:
+    """执行向量召回，并返回经过阈值和数量限制的医学证据。"""
     settings = get_settings()
     if not settings.rag_enabled:
         if settings.rag_required:

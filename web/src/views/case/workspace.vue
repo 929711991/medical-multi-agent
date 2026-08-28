@@ -5,9 +5,13 @@ import { getCase } from '../../api/case'; import { getPatientOverview } from '..
 const route = useRoute(); const router = useRouter(); const caseId = String(route.params.caseId); const current = ref<MedicalCase | null>(null); const patient = ref<PatientOverview | null>(null); const loading = ref(true); const error = ref(''); const reviewDrawer = ref(false); const reviewing = ref(false)
 const { events, connect } = useCaseStream(caseId, async () => { await loadCase(false) })
 const result = computed(() => current.value?.doctor_result || current.value?.ai_result || null)
+// 首次加载时同时准备患者上下文，并仅对运行中的病例建立事件流。
 async function loadCase(initial = true) { if (initial) loading.value = true; try { current.value = await getCase(caseId); if (!patient.value) patient.value = await getPatientOverview(current.value.patient_id); if (current.value.status === 'RUNNING' && initial) connect() } catch { error.value = '病例工作台加载失败' } finally { loading.value = false } }
+// 提交审核失败时重新读取服务端状态，防止乐观锁冲突后页面继续显示旧数据。
 async function review(payload: ReviewRequest) { if (!current.value) return; reviewing.value = true; try { current.value = await submitReview(caseId, payload); reviewDrawer.value = false; ElMessage.success(payload.action === 'reject' ? '病例已驳回' : '医生审核已完成') } catch (e) { ElMessage.error(apiErrorMessage(e, '审核提交失败')); await loadCase(false) } finally { reviewing.value = false } }
+// 审核通过沿用当前评估版本，服务端据此阻止并发审核覆盖。
 async function approve() { if (!current.value) return; await ElMessageBox.confirm('确认将当前 AI 辅助意见审核通过？通过后将形成医生审核结果。', '审核通过', { type: 'warning', confirmButtonText: '确认通过' }); await review({ action: 'approve', expected_version: current.value.assessment_version }) }
+// 驳回必须收集原因，并携带当前版本提交以便服务端执行并发校验。
 async function reject() { if (!current.value) return; const { value } = await ElMessageBox.prompt('请说明当前意见被驳回的原因。', '驳回 AI 辅助意见', { inputType: 'textarea', inputValidator: v => Boolean(v.trim()) || '请填写驳回原因', confirmButtonText: '确认驳回' }); await review({ action: 'reject', expected_version: current.value.assessment_version, reason: value }) }
 onMounted(loadCase)
 </script>

@@ -1,7 +1,19 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import (
+    BigInteger,
+    JSON,
+    Date,
+    DateTime,
+    FetchedValue,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 from app.core.snowflake import generate_snowflake_id
@@ -12,157 +24,315 @@ class Base(DeclarativeBase):
 
 
 class TimestampMixin:
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    """为业务表统一增加可审计的创建时间和更新时间。"""
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), comment="记录创建时间"
+    )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        comment="记录最后更新时间",
     )
 
 
-class Patient(Base, TimestampMixin):
+class AutoIdMixin:
+    """为未来切换 ID 策略预留数据库自增列。"""
+
+    # SQLAlchemy 仅会为主键渲染自增属性，因此由 initialize_schema 为该备用列补充自增定义。
+    auto_id: Mapped[int] = mapped_column(
+        BigInteger,
+        unique=True,
+        nullable=False,
+        server_default=FetchedValue(),
+        comment="备用数据库自增编号",
+    )
+
+
+class Patient(AutoIdMixin, Base, TimestampMixin):
     __tablename__ = "patients"
+    __table_args__ = {"comment": "患者主档表"}
 
     pk_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法内部主键",
     )
-    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    display_name: Mapped[str] = mapped_column(String(120), nullable=False)
-    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
-    data_scope: Mapped[str] = mapped_column(String(20), nullable=False, default="sandbox", index=True)
-    source_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="doctor_web", index=True)
+    id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True, comment="对外患者业务编号"
+    )
+    display_name: Mapped[str] = mapped_column(String(120), nullable=False, comment="患者显示姓名")
+    birth_date: Mapped[date | None] = mapped_column(Date, nullable=True, comment="出生日期")
+    sex: Mapped[str | None] = mapped_column(String(20), nullable=True, comment="生理性别")
+    summary_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON, default=dict, comment="患者病史与摘要信息"
+    )
+    data_scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="sandbox", index=True, comment="数据隔离范围"
+    )
+    source_channel: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="doctor_web",
+        index=True,
+        comment="患者数据来源渠道",
+    )
 
 
-class Doctor(Base, TimestampMixin):
+class Doctor(AutoIdMixin, Base, TimestampMixin):
     __tablename__ = "doctors"
+    __table_args__ = {"comment": "医生账号与执业信息表"}
 
     pk_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法内部主键",
     )
-    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    account: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
-    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False)
-    department: Mapped[str] = mapped_column(String(120), nullable=False)
-    title: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True, comment="对外医生业务编号"
+    )
+    account: Mapped[str | None] = mapped_column(
+        String(64), unique=True, nullable=True, index=True, comment="医生登录账号"
+    )
+    password_hash: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, comment="PBKDF2 密码摘要"
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False, comment="医生姓名")
+    department: Mapped[str] = mapped_column(String(120), nullable=False, comment="所属科室")
+    title: Mapped[str | None] = mapped_column(String(120), nullable=True, comment="医生职称")
 
 
-class MedicalVisit(Base):
+class MedicalVisit(AutoIdMixin, Base):
     __tablename__ = "medical_visits"
+    __table_args__ = {"comment": "患者就诊记录表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    visit_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    department: Mapped[str] = mapped_column(String(120))
-    chief_complaint: Mapped[str] = mapped_column(Text)
-    record_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    visit_time: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, comment="就诊时间"
+    )
+    department: Mapped[str] = mapped_column(String(120), comment="接诊科室")
+    chief_complaint: Mapped[str] = mapped_column(Text, comment="患者主诉")
+    record_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, comment="结构化病历内容")
 
 
-class LabResult(Base):
+class LabResult(AutoIdMixin, Base):
     __tablename__ = "lab_results"
+    __table_args__ = {"comment": "患者检验结果表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    test_name: Mapped[str] = mapped_column(String(160))
-    value: Mapped[str] = mapped_column(String(160))
-    reference_range: Mapped[str | None] = mapped_column(String(160), nullable=True)
-    abnormal_flag: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, comment="采样或观察时间"
+    )
+    test_name: Mapped[str] = mapped_column(String(160), comment="检验项目名称")
+    value: Mapped[str] = mapped_column(String(160), comment="检验结果值")
+    reference_range: Mapped[str | None] = mapped_column(
+        String(160), nullable=True, comment="参考范围"
+    )
+    abnormal_flag: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="异常标记"
+    )
 
 
-class ImagingReport(Base):
+class ImagingReport(AutoIdMixin, Base):
     __tablename__ = "imaging_reports"
+    __table_args__ = {"comment": "患者影像检查报告表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
-    modality: Mapped[str] = mapped_column(String(80))
-    body_part: Mapped[str] = mapped_column(String(120))
-    findings: Mapped[str] = mapped_column(Text)
-    impression: Mapped[str] = mapped_column(Text)
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    observed_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), index=True, comment="检查时间"
+    )
+    modality: Mapped[str] = mapped_column(String(80), comment="影像检查类型")
+    body_part: Mapped[str] = mapped_column(String(120), comment="检查部位")
+    findings: Mapped[str] = mapped_column(Text, comment="影像所见")
+    impression: Mapped[str] = mapped_column(Text, comment="影像结论")
 
 
-class Medication(Base):
+class Medication(AutoIdMixin, Base):
     __tablename__ = "medications"
+    __table_args__ = {"comment": "患者用药记录表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    name: Mapped[str] = mapped_column(String(160))
-    dose: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    route: Mapped[str | None] = mapped_column(String(80), nullable=True)
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    ended_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    name: Mapped[str] = mapped_column(String(160), comment="药品名称")
+    dose: Mapped[str | None] = mapped_column(String(100), nullable=True, comment="用药剂量")
+    route: Mapped[str | None] = mapped_column(String(80), nullable=True, comment="给药途径")
+    started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="开始用药时间"
+    )
+    ended_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="停止用药时间"
+    )
 
 
-class Allergy(Base):
+class Allergy(AutoIdMixin, Base):
     __tablename__ = "allergies"
+    __table_args__ = {"comment": "患者过敏记录表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    substance: Mapped[str] = mapped_column(String(160))
-    reaction: Mapped[str | None] = mapped_column(String(240), nullable=True)
-    severity: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    substance: Mapped[str] = mapped_column(String(160), comment="过敏原")
+    reaction: Mapped[str | None] = mapped_column(
+        String(240), nullable=True, comment="过敏反应"
+    )
+    severity: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="严重程度"
+    )
+    observed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="记录或发生时间"
+    )
 
 
-class MedicalCase(Base, TimestampMixin):
+class MedicalCase(AutoIdMixin, Base, TimestampMixin):
     __tablename__ = "medical_cases"
-    __table_args__ = (Index("ix_medical_cases_thread_id", "thread_id", unique=True),)
+    __table_args__ = (
+        Index("ix_medical_cases_thread_id", "thread_id", unique=True),
+        {"comment": "AI 辅助诊断病例主表"},
+    )
 
     pk_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法内部主键",
     )
-    id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
-    patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
-    thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
-    question: Mapped[str] = mapped_column(Text, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), default="CREATED", index=True)
-    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    source_channel: Mapped[str] = mapped_column(String(32), nullable=False, default="doctor_web", index=True)
+    id: Mapped[str] = mapped_column(
+        String(36), unique=True, nullable=False, index=True, comment="对外病例业务编号"
+    )
+    patient_id: Mapped[str] = mapped_column(
+        ForeignKey("patients.id"), index=True, comment="患者业务编号"
+    )
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="诊断图线程编号")
+    question: Mapped[str] = mapped_column(Text, nullable=False, comment="医生提交的临床问题")
+    status: Mapped[str] = mapped_column(
+        String(32), default="CREATED", index=True, comment="病例处理状态"
+    )
+    risk_level: Mapped[str | None] = mapped_column(
+        String(16), nullable=True, comment="风险等级"
+    )
+    source_channel: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="doctor_web",
+        index=True,
+        comment="病例创建渠道",
+    )
     assessments: Mapped[list["MedicalAssessment"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
     )
 
 
-class MedicalAssessment(Base, TimestampMixin):
+class MedicalAssessment(AutoIdMixin, Base, TimestampMixin):
     __tablename__ = "medical_assessments"
+    __table_args__ = {"comment": "AI 评估与医生审核结果表"}
 
     id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法主键",
     )
-    case_id: Mapped[str] = mapped_column(ForeignKey("medical_cases.id"), unique=True, index=True)
-    ai_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    doctor_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
-    review_status: Mapped[str] = mapped_column(String(32), default="PENDING")
-    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
-    reviewer_id: Mapped[str | None] = mapped_column(ForeignKey("doctors.id"), nullable=True)
-    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    case_id: Mapped[str] = mapped_column(
+        ForeignKey("medical_cases.id"), unique=True, index=True, comment="病例业务编号"
+    )
+    ai_result_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, comment="AI 原始评估结果"
+    )
+    doctor_result_json: Mapped[dict[str, Any] | None] = mapped_column(
+        JSON, nullable=True, comment="医生最终审核结果"
+    )
+    review_status: Mapped[str] = mapped_column(
+        String(32), default="PENDING", comment="审核状态"
+    )
+    review_reason: Mapped[str | None] = mapped_column(Text, nullable=True, comment="审核说明")
+    reviewer_id: Mapped[str | None] = mapped_column(
+        ForeignKey("doctors.id"), nullable=True, comment="审核医生业务编号"
+    )
+    reviewed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="审核完成时间"
+    )
+    version: Mapped[int] = mapped_column(
+        Integer, default=1, nullable=False, comment="乐观锁版本号"
+    )
     case: Mapped[MedicalCase] = relationship(back_populates="assessments")
 
 
-class KnowledgeDocument(Base, TimestampMixin):
+class KnowledgeDocument(AutoIdMixin, Base, TimestampMixin):
     __tablename__ = "knowledge_documents"
+    __table_args__ = {"comment": "RAG 医学知识文档索引表"}
 
     pk_id: Mapped[int] = mapped_column(
-        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法内部主键",
     )
-    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    title: Mapped[str] = mapped_column(String(255), nullable=False)
-    source: Mapped[str] = mapped_column(String(500), nullable=False)
-    source_type: Mapped[str] = mapped_column(String(64), nullable=False)
-    version: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    checksum: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
-    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDING", index=True)
-    chunk_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    id: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True, comment="知识文档业务编号"
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False, comment="文档标题")
+    source: Mapped[str] = mapped_column(String(500), nullable=False, comment="文档来源")
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False, comment="来源类型")
+    version: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="文档版本")
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="发布日期"
+    )
+    checksum: Mapped[str] = mapped_column(
+        String(64), nullable=False, index=True, comment="内容校验和"
+    )
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING", index=True, comment="入库状态"
+    )
+    chunk_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, comment="已切分知识块数量"
+    )

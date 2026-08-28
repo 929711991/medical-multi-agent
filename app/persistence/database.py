@@ -1,4 +1,6 @@
 from collections.abc import AsyncIterator
+from numbers import Number
+from typing import Any
 
 from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
@@ -9,16 +11,31 @@ from app.core.snowflake import MIN_PLAUSIBLE_SNOWFLAKE_ID, generate_snowflake_id
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
+BUSINESS_TABLES = (
+    "patients",
+    "doctors",
+    "medical_visits",
+    "lab_results",
+    "imaging_reports",
+    "medications",
+    "allergies",
+    "medical_cases",
+    "medical_assessments",
+    "knowledge_documents",
+)
 
 
 def get_engine() -> AsyncEngine:
+    """返回进程内复用的异步 MySQL 引擎。"""
     global _engine
+    # 延迟创建引擎，避免命令行工具和隔离单元测试仅导入模块时就打开连接池。
     if _engine is None:
         _engine = create_async_engine(get_settings().database_url, pool_pre_ping=True, pool_recycle=1800)
     return _engine
 
 
 def get_session_factory() -> async_sessionmaker[AsyncSession]:
+    """返回仓储层复用的 SQLAlchemy 会话工厂。"""
     global _session_factory
     if _session_factory is None:
         _session_factory = async_sessionmaker(get_engine(), expire_on_commit=False)
@@ -26,17 +43,20 @@ def get_session_factory() -> async_sessionmaker[AsyncSession]:
 
 
 async def get_session() -> AsyncIterator[AsyncSession]:
+    """为一次请求提供独立的异步数据库会话。"""
     async with get_session_factory() as session:
         yield session
 
 
 async def _table_columns(connection, table_name: str) -> set[str]:
+    """读取指定业务表当前包含的字段名称。"""
     return await connection.run_sync(
         lambda sync_connection: {item["name"] for item in inspect(sync_connection).get_columns(table_name)}
     )
 
 
 async def _has_unique_column_index(connection, table_name: str, column_name: str) -> bool:
+    """判断字段是否属于唯一索引，主键索引也计算在内。"""
     rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
     return any(row["Non_unique"] == 0 and row["Column_name"] == column_name for row in rows)
 
@@ -44,6 +64,7 @@ async def _has_unique_column_index(connection, table_name: str, column_name: str
 async def _has_secondary_unique_column_index(
     connection, table_name: str, column_name: str
 ) -> bool:
+    """判断字段是否拥有独立的非主键唯一索引。"""
     rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
     indexes: dict[str, list[str]] = {}
     for row in rows:
@@ -53,6 +74,7 @@ async def _has_secondary_unique_column_index(
 
 
 async def _primary_key_columns(connection, table_name: str) -> list[str]:
+    """按照索引声明顺序返回主键字段。"""
     rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
     primary_rows = sorted(
         (row for row in rows if row["Key_name"] == "PRIMARY"),
@@ -62,7 +84,7 @@ async def _primary_key_columns(connection, table_name: str) -> list[str]:
 
 
 async def _migrate_business_table_to_snowflake_primary(connection, table_name: str) -> None:
-    """Keep the public string ID and move the internal primary key to a Snowflake BIGINT."""
+    """保留对外字符串业务编号，并将内部主键迁移为雪花 ID。"""
     columns = await _table_columns(connection, table_name)
     if "pk_id" not in columns:
         await connection.execute(text(f"ALTER TABLE `{table_name}` ADD COLUMN pk_id BIGINT NULL"))
@@ -76,6 +98,7 @@ async def _migrate_business_table_to_snowflake_primary(connection, table_name: s
             {"snowflake_floor": MIN_PLAUSIBLE_SNOWFLAKE_ID},
         )
     ).mappings().all()
+    # 字符串业务编号稳定且唯一，可在回填新主键时安全定位每一行。
     for row in rows:
         await connection.execute(
             text(f"UPDATE `{table_name}` SET pk_id = :pk_id WHERE id = :business_id"),
@@ -90,6 +113,7 @@ async def _migrate_business_table_to_snowflake_primary(connection, table_name: s
             text(f"CREATE UNIQUE INDEX ux_{table_name}_business_id ON `{table_name}` (id)")
         )
     if await _primary_key_columns(connection, table_name) != ["pk_id"]:
+        # 现有外键仍引用旧业务编号，所以切换主键前必须先为业务编号建立独立唯一索引。
         await connection.execute(
             text(
                 f"ALTER TABLE `{table_name}` DROP PRIMARY KEY, "
@@ -99,7 +123,7 @@ async def _migrate_business_table_to_snowflake_primary(connection, table_name: s
 
 
 async def _migrate_numeric_table_to_snowflake_primary(connection, table_name: str) -> None:
-    """Remove AUTO_INCREMENT and replace legacy small IDs with Snowflake IDs."""
+    """移除旧自增属性，并将已有小整数主键替换为雪花 ID。"""
     await connection.execute(
         text(f"ALTER TABLE `{table_name}` MODIFY COLUMN id BIGINT NOT NULL")
     )
@@ -112,11 +136,208 @@ async def _migrate_numeric_table_to_snowflake_primary(connection, table_name: st
             {"snowflake_floor": MIN_PLAUSIBLE_SNOWFLAKE_ID},
         )
     ).scalars().all()
+    # 这些记录表的 ID 未被其他业务表引用，因此可以原位替换，无需级联迁移外键。
     for legacy_id in legacy_ids:
         await connection.execute(
             text(f"UPDATE `{table_name}` SET id = :new_id WHERE id = :legacy_id"),
             {"new_id": generate_snowflake_id(), "legacy_id": legacy_id},
         )
+
+
+async def _ensure_auto_increment_fallback(connection, table_name: str) -> None:
+    """为将来切换策略安装备用自增字段。"""
+    columns = await _table_columns(connection, table_name)
+    if "auto_id" not in columns:
+        # 先以可空字段加入，避免升级已有数据时依赖临时伪造默认值。
+        await connection.execute(
+            text(
+                f"ALTER TABLE `{table_name}` ADD COLUMN auto_id BIGINT NULL "
+                "COMMENT '备用数据库自增编号'"
+            )
+        )
+    if not await _has_secondary_unique_column_index(connection, table_name, "auto_id"):
+        # MySQL 要求自增字段必须有索引，即使该字段当前不是主键。
+        await connection.execute(
+            text(f"CREATE UNIQUE INDEX ux_{table_name}_auto_id ON `{table_name}` (auto_id)")
+        )
+
+    column = (
+        await connection.execute(
+            text(f"SHOW FULL COLUMNS FROM `{table_name}` WHERE Field = 'auto_id'")
+        )
+    ).mappings().one()
+    if "auto_increment" not in str(column["Extra"]).lower():
+        # 转换为自增字段时会为历史行分配连续编号，后续新增行则由数据库生成。
+        await connection.execute(
+            text(
+                f"ALTER TABLE `{table_name}` MODIFY COLUMN auto_id BIGINT "
+                "NOT NULL AUTO_INCREMENT COMMENT '备用数据库自增编号'"
+            )
+        )
+
+
+def _mysql_literal(value: Any) -> str:
+    """将可信的结构值渲染为 MySQL DDL 字面量。"""
+    if isinstance(value, Number):
+        return str(value)
+    rendered = str(value)
+    normalized = rendered.upper()
+    if normalized.startswith("CURRENT_TIMESTAMP") or normalized in {"NOW()", "LOCALTIME", "LOCALTIMESTAMP"}:
+        return rendered
+    return "'" + rendered.replace("\\", "\\\\").replace("'", "''") + "'"
+
+
+def _column_definition(column: dict[str, Any], comment: str) -> str:
+    """根据字段元数据重建定义，并且只更新字段注释。"""
+    parts = [f"`{column['Field']}`", str(column["Type"])]
+    if column.get("Collation"):
+        parts.append(f"COLLATE {column['Collation']}")
+    parts.append("NULL" if column["Null"] == "YES" else "NOT NULL")
+    if column["Default"] is not None:
+        parts.append(f"DEFAULT {_mysql_literal(column['Default'])}")
+    elif column["Null"] == "YES":
+        parts.append("DEFAULT NULL")
+
+    extra = str(column.get("Extra") or "")
+    if "auto_increment" in extra.lower():
+        parts.append("AUTO_INCREMENT")
+    if "on update" in extra.lower():
+        # SHOW FULL COLUMNS 可能带有 DEFAULT_GENERATED 前缀，重建时只保留 ON UPDATE 子句。
+        position = extra.lower().index("on update")
+        parts.append(extra[position:])
+    parts.append(f"COMMENT {_mysql_literal(comment)}")
+    return " ".join(parts)
+
+
+async def _foreign_keys(connection) -> list[dict[str, Any]]:
+    """读取业务外键定义，保证修改字段注释时能够安全恢复。"""
+    rows = (
+        await connection.execute(
+            text(
+                "SELECT kcu.CONSTRAINT_NAME, kcu.TABLE_NAME, kcu.COLUMN_NAME, "
+                "kcu.REFERENCED_TABLE_NAME, kcu.REFERENCED_COLUMN_NAME, "
+                "kcu.ORDINAL_POSITION, rc.UPDATE_RULE, rc.DELETE_RULE "
+                "FROM information_schema.KEY_COLUMN_USAGE kcu "
+                "JOIN information_schema.REFERENTIAL_CONSTRAINTS rc "
+                "ON rc.CONSTRAINT_SCHEMA = kcu.CONSTRAINT_SCHEMA "
+                "AND rc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME "
+                "AND rc.TABLE_NAME = kcu.TABLE_NAME "
+                "WHERE kcu.CONSTRAINT_SCHEMA = DATABASE() "
+                "AND kcu.REFERENCED_TABLE_NAME IS NOT NULL "
+                "ORDER BY kcu.TABLE_NAME, kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION"
+            )
+        )
+    ).mappings().all()
+
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        if row["TABLE_NAME"] not in BUSINESS_TABLES:
+            continue
+        key = (row["TABLE_NAME"], row["CONSTRAINT_NAME"])
+        item = grouped.setdefault(
+            key,
+            {
+                "table_name": row["TABLE_NAME"],
+                "constraint_name": row["CONSTRAINT_NAME"],
+                "columns": [],
+                "referenced_table": row["REFERENCED_TABLE_NAME"],
+                "referenced_columns": [],
+                "update_rule": row["UPDATE_RULE"],
+                "delete_rule": row["DELETE_RULE"],
+            },
+        )
+        item["columns"].append(row["COLUMN_NAME"])
+        item["referenced_columns"].append(row["REFERENCED_COLUMN_NAME"])
+    return list(grouped.values())
+
+
+async def _drop_foreign_keys(connection, foreign_keys: list[dict[str, Any]]) -> None:
+    """修改被引用字段前，临时移除已记录的外键。"""
+    for foreign_key in foreign_keys:
+        await connection.execute(
+            text(
+                f"ALTER TABLE `{foreign_key['table_name']}` DROP FOREIGN KEY "
+                f"`{foreign_key['constraint_name']}`"
+            )
+        )
+
+
+async def _restore_foreign_keys(connection, foreign_keys: list[dict[str, Any]]) -> None:
+    """按照 information_schema 中记录的规则完整恢复外键。"""
+    for foreign_key in foreign_keys:
+        columns = ", ".join(f"`{name}`" for name in foreign_key["columns"])
+        referenced_columns = ", ".join(
+            f"`{name}`" for name in foreign_key["referenced_columns"]
+        )
+        await connection.execute(
+            text(
+                f"ALTER TABLE `{foreign_key['table_name']}` ADD CONSTRAINT "
+                f"`{foreign_key['constraint_name']}` FOREIGN KEY ({columns}) "
+                f"REFERENCES `{foreign_key['referenced_table']}` ({referenced_columns}) "
+                f"ON UPDATE {foreign_key['update_rule']} ON DELETE {foreign_key['delete_rule']}"
+            )
+        )
+
+
+async def _schema_comments_outdated(connection, tables) -> bool:
+    """判断 ORM 中的表或字段注释是否与 MySQL 不一致。"""
+    for table in tables:
+        table_comment = await connection.scalar(
+            text(
+                "SELECT TABLE_COMMENT FROM information_schema.TABLES "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :table_name"
+            ),
+            {"table_name": table.name},
+        )
+        if table.comment and table_comment != table.comment:
+            return True
+        current_columns = {
+            row["Field"]: row
+            for row in (
+                await connection.execute(text(f"SHOW FULL COLUMNS FROM `{table.name}`"))
+            ).mappings().all()
+        }
+        if any(
+            column.comment and current_columns[column.name]["Comment"] != column.comment
+            for column in table.columns
+        ):
+            return True
+    return False
+
+
+async def _apply_schema_comments(connection, tables) -> None:
+    """将 ORM 中的表和字段中文说明同步到真实 MySQL。"""
+    tables = list(tables)
+    if not await _schema_comments_outdated(connection, tables):
+        return
+
+    foreign_keys = await _foreign_keys(connection)
+    await _drop_foreign_keys(connection, foreign_keys)
+    try:
+        for table in tables:
+            if table.comment:
+                await connection.execute(
+                    text(
+                        f"ALTER TABLE `{table.name}` COMMENT = "
+                        f"{_mysql_literal(table.comment)}"
+                    )
+                )
+            current_columns = {
+                row["Field"]: row
+                for row in (
+                    await connection.execute(text(f"SHOW FULL COLUMNS FROM `{table.name}`"))
+                ).mappings().all()
+            }
+            for column in table.columns:
+                if not column.comment or current_columns[column.name]["Comment"] == column.comment:
+                    continue
+                definition = _column_definition(current_columns[column.name], column.comment)
+                await connection.execute(
+                    text(f"ALTER TABLE `{table.name}` MODIFY COLUMN {definition}")
+                )
+    finally:
+        # MySQL 会自动提交 DDL，因此即使某个字段注释失败，也必须恢复全部外键。
+        await _restore_foreign_keys(connection, foreign_keys)
 
 
 async def initialize_schema() -> None:
@@ -221,8 +442,16 @@ async def initialize_schema() -> None:
         ):
             await _migrate_numeric_table_to_snowflake_primary(connection, table_name)
 
+        for table_name in BUSINESS_TABLES:
+            await _ensure_auto_increment_fallback(connection, table_name)
+
+        # 最后同步注释，确保所有兼容字段已存在，并可直接以 ORM 元数据为准。
+        mapped_tables = [Base.metadata.tables[table_name] for table_name in BUSINESS_TABLES]
+        await _apply_schema_comments(connection, mapped_tables)
+
 
 async def check_mysql_ready() -> bool:
+    """通过轻量查询判断业务 MySQL 是否可用。"""
     try:
         async with get_engine().connect() as connection:
             await connection.execute(text("SELECT 1"))
@@ -232,6 +461,7 @@ async def check_mysql_ready() -> bool:
 
 
 async def close_database() -> None:
+    """释放缓存的数据库资源，使测试和命令行进程能够正常退出。"""
     global _engine, _session_factory
     if _engine is not None:
         await _engine.dispose()

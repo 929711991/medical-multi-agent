@@ -12,6 +12,7 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"], dependencies=[Depend
 
 @router.get("/status", response_model=KnowledgeStatusResponse)
 async def knowledge_status() -> KnowledgeStatusResponse:
+    """返回 RAG 配置模式和实时向量库就绪状态。"""
     settings = get_settings()
     ready_documents = 0
     async with get_session_factory()() as session:
@@ -38,5 +39,6 @@ async def knowledge_documents(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
 ) -> dict:
+    """返回知识文档已落库的摄取状态。"""
     async with get_session_factory()() as session:
         return await KnowledgeRepository(session).list(page=page, page_size=page_size)

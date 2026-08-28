@@ -5,6 +5,7 @@ from app.schemas.diagnosis import GraphDoctorReview
 
 
 async def doctor_review_node(state: DiagnosisState) -> dict:
+    """暂停诊断图，等待医生通过、编辑或驳回。"""
     payload = {
         "type": "doctor_review_required",
         "case_id": state["case_id"],

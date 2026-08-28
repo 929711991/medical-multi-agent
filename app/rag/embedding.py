@@ -7,6 +7,7 @@ from app.core.config import get_settings
 
 @lru_cache
 def _get_embeddings() -> OpenAIEmbeddings:
+    """延迟创建并缓存 OpenAI 兼容向量模型客户端。"""
     settings = get_settings()
     settings.validate_rag()
     credential = getattr(settings, "embedding_api_" + "key")
@@ -20,12 +21,14 @@ def _get_embeddings() -> OpenAIEmbeddings:
 
 
 async def embed_query(query: str) -> list[float]:
+    """将单条检索问题转换为向量。"""
     if not query.strip():
         raise ValueError("Embedding query 不能为空")
     return await _get_embeddings().aembed_query(query.strip())
 
 
 async def embed_documents(texts: list[str]) -> list[list[float]]:
+    """按照配置批大小将多段文档转换为向量。"""
     normalized = [item.strip() for item in texts if item.strip()]
     if not normalized:
         return []
@@ -38,4 +41,5 @@ async def embed_documents(texts: list[str]) -> list[list[float]]:
 
 
 def reset_embedding_client() -> None:
+    """清除向量模型客户端缓存，供测试和配置刷新使用。"""
     _get_embeddings.cache_clear()

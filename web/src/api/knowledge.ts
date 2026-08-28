@@ -28,9 +28,11 @@ export interface KnowledgeDocument {
 }
 
 export async function getKnowledgeStatus(): Promise<KnowledgeStatus> {
+  /** 获取医学知识库的配置和就绪状态。 */
   return (await request.get<KnowledgeStatus>('/knowledge/status')).data
 }
 
 export async function getKnowledgeDocuments(): Promise<{ items: KnowledgeDocument[]; page: number; page_size: number; total: number }> {
+  /** 获取知识文档的入库状态列表。 */
   return (await request.get('/knowledge/documents')).data
 }

@@ -28,6 +28,7 @@ class UTF8JSONResponse(JSONResponse):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """应用启动时初始化共享基础设施，关闭时统一释放资源。"""
     configure_logging()
     await initialize_schema()
     get_mcp_manager()
@@ -40,6 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 def create_app(*, graph: Any | None = None) -> FastAPI:
+    """使用传入的诊断图或生产诊断图创建 FastAPI 应用。"""
     selected_lifespan = None if graph is not None else lifespan
     app = FastAPI(
         title=get_settings().app_name,
@@ -60,6 +62,7 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
 
     @app.get("/health")
     async def health() -> dict[str, Any]:
+        """向运维和前端返回聚合后的依赖健康状态。"""
         if graph is not None:
             return {
                 "status": "ok",
@@ -71,6 +74,7 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        """将请求参数校验错误转换为统一的对外错误结构。"""
         errors = exc.errors()
         summaries: list[str] = []
         for item in errors:
@@ -88,6 +92,7 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
 
     @app.exception_handler(Exception)
     async def unhandled_exception(request: Request, exc: Exception) -> JSONResponse:
+        """记录未预期异常，并向 API 调用方隐藏内部实现细节。"""
         logger.exception("unhandled_request_error method=%s path=%s", request.method, request.url.path)
         return UTF8JSONResponse(status_code=500, content={"detail": "服务器处理请求时出现异常，请稍后重试"})
 

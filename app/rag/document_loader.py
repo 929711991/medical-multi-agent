@@ -2,6 +2,7 @@ from pathlib import Path
 
 
 def load_document(path: Path) -> str:
+    """根据文件类型读取受支持知识文档的纯文本。"""
     suffix = path.suffix.lower()
     if suffix in {".txt", ".md"}:
         return path.read_text(encoding="utf-8")
@@ -16,4 +17,5 @@ def load_document(path: Path) -> str:
 
 
 def supported_document(path: Path) -> bool:
+    """判断文件扩展名是否属于支持的知识文档类型。"""
     return path.is_file() and path.suffix.lower() in {".txt", ".md", ".pdf"}

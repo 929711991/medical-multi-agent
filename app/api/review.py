@@ -22,6 +22,7 @@ async def review_case(
     graph=Depends(get_graph),
     doctor: DoctorIdentity = Depends(get_current_doctor),
 ) -> CaseResponse:
+    """使用乐观锁保存医生审核，并恢复暂停的诊断图。"""
     async with get_session_factory()() as session:
         repository = CaseRepository(session)
         case = await repository.get(case_id)

@@ -12,6 +12,7 @@ RecordLoader = Callable[[str], Awaitable[dict[str, Any]]]
 
 
 async def run_medical_supervisor(state: DiagnosisState, patient_context: dict[str, Any]) -> DiagnosisResult:
+    """调用综合医学智能体，基于患者事实形成结构化诊断结果。"""
     tools = await get_mcp_manager().get_tools()
     agent = create_medical_supervisor(tools)
     prompt = {
@@ -31,16 +32,19 @@ async def run_medical_supervisor(state: DiagnosisState, patient_context: dict[st
 
 
 async def load_records_from_mcp(patient_id: str) -> dict[str, Any]:
+    """通过 MCP 读取患者临床记录，并转换为图节点可用的上下文。"""
     return await get_mcp_manager().invoke_structured(
         "get_medical_records", {"patient_id": patient_id}
     )
 
 
 def make_medical_node(runner: MedicalRunner | None = None, record_loader: RecordLoader | None = None):
+    """构造可注入测试依赖的综合医学图节点。"""
     selected_runner = runner or run_medical_supervisor
     selected_loader = record_loader or load_records_from_mcp
 
     async def medical_agent_node(state: DiagnosisState) -> dict:
+        """加载患者事实并执行综合医学分析。"""
         context = await selected_loader(state["patient_id"])
         result = await selected_runner(state, context)
         if state["risk_level"] == "emergency" and result.risk_level != "emergency":

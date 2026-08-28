@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 class DiagnosisService:
     @staticmethod
     async def create_case(*, patient_id: str, question: str, source_channel: str = "doctor_web") -> tuple[str, str]:
+        """校验患者访问权限并创建病例及对应图线程。"""
         case_id = str(uuid4())
         thread_id = case_id
         async with get_session_factory()() as session:
@@ -31,6 +32,7 @@ class DiagnosisService:
 
     @staticmethod
     async def run_case(*, graph, case_id: str, thread_id: str, patient_id: str, question: str) -> None:
+        """执行诊断图并把异常状态持久化到病例记录。"""
         async with get_session_factory()() as session:
             repository = CaseRepository(session)
             try:

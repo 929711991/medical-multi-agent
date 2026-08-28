@@ -10,6 +10,7 @@ specialty 必须为 gastroenterology，并输出 SpecialistOpinion。"""
 
 
 def create_gastroenterology_agent():
+    """创建用于消化内科分析的深度智能体。"""
     return create_deep_agent(
         model=get_llm(),
         tools=[],
@@ -18,4 +19,3 @@ def create_gastroenterology_agent():
         response_format=SpecialistOpinion,
         name="gastroenterology_specialist",
     )
-

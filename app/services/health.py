@@ -14,6 +14,7 @@ from app.rag.redis_store import has_index, health as redis_health
 
 
 async def _check_checkpoint() -> bool:
+    """检查 LangGraph MySQL 检查点服务是否可连接。"""
     engine = create_async_engine(get_settings().checkpoint_url, pool_pre_ping=True)
     try:
         async with engine.connect() as connection:
@@ -26,6 +27,7 @@ async def _check_checkpoint() -> bool:
 
 
 async def _check_mcp() -> bool:
+    """检查患者 MCP 服务是否能返回工具列表。"""
     try:
         tools = await asyncio.wait_for(get_mcp_manager().get_tools(), timeout=10)
         names = {item.name for item in tools}
@@ -35,6 +37,7 @@ async def _check_mcp() -> bool:
 
 
 async def _check_llm() -> bool:
+    """检查真实大模型配置和轻量连接状态。"""
     settings = get_settings()
     if not settings.aliyun_llm_api_key:
         return False
@@ -46,6 +49,7 @@ async def _check_llm() -> bool:
 
 
 async def _check_rag() -> tuple[bool, bool, int]:
+    """检查 Redis 向量索引、向量模型和已就绪文档数量。"""
     settings = get_settings()
     if not settings.rag_enabled:
         return False, False, 0
@@ -66,6 +70,7 @@ async def _check_rag() -> tuple[bool, bool, int]:
 
 
 async def collect_health() -> dict[str, Any]:
+    """汇总数据库、检查点、MCP、大模型和 RAG 健康状态。"""
     settings = get_settings()
     mysql_ready, checkpoint_ready, mcp_ready, llm_ready, rag = await asyncio.gather(
         check_mysql_ready(),

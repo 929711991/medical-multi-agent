@@ -14,6 +14,7 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"], dependencies=[Depend
 
 @router.get("/summary")
 async def dashboard_summary() -> dict:
+    """返回临床工作台所需的工作量和风险聚合指标。"""
     now = datetime.now(UTC)
     today = now.replace(hour=0, minute=0, second=0, microsecond=0)
     start = today - timedelta(days=6)
@@ -45,4 +46,3 @@ async def dashboard_summary() -> dict:
         "trend": [{"date": str(item[0]), "count": item[1]} for item in trends],
         "pending_items": pending["items"],
     }
-

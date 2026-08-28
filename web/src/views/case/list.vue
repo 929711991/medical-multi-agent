@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, watch } from 'vue'; import { useRoute, useRouter } from 'vue-router'; import AppPage from '../../components/common/AppPage.vue'; import StatusBadge from '../../components/common/StatusBadge.vue'; import EmptyState from '../../components/common/EmptyState.vue'; import ErrorState from '../../components/common/ErrorState.vue'; import { getCases } from '../../api/case'; import type { MedicalCase } from '../../types/case'; import { formatDateTime } from '../../utils/format'; import { specialtyLabel } from '../../utils/medical'
 const route = useRoute(); const router = useRouter(); const items = ref<MedicalCase[]>([]); const loading = ref(true); const error = ref(''); const tab = ref(String(route.query.status || '')); const filters = reactive({ search: '', risk_level: String(route.query.risk || '') }); const page = reactive({ page: 1, page_size: 20, total: 0 })
+// 根据当前标签、风险和关键词读取病例，并保留分页总数供列表控件使用。
 async function load() { loading.value = true; error.value = ''; try { const result = await getCases({ ...page, status: tab.value || undefined, risk_level: filters.risk_level || undefined, search: filters.search || undefined }); items.value = result.items; page.total = result.total } catch { error.value = '病例列表加载失败' } finally { loading.value = false } }
 watch(tab, () => { page.page = 1; load() }); onMounted(load)
 </script>

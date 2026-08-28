@@ -11,6 +11,7 @@ router = APIRouter(prefix="/patients", tags=["patients"], dependencies=[Depends(
 
 @router.post("", response_model=PatientCreateResponse, status_code=status.HTTP_201_CREATED)
 async def create_patient(payload: PatientCreateRequest) -> PatientCreateResponse:
+    """根据前端已校验输入创建沙箱患者记录。"""
     async with get_session_factory()() as session:
         patient = await PatientRepository(session).create(
             name=payload.name,
@@ -38,11 +39,13 @@ async def list_patients(
     search: str | None = Query(None, max_length=120),
     sex: str | None = Query(None, max_length=20),
 ) -> dict:
+    """返回经过筛选和分页的患者工作列表。"""
     async with get_session_factory()() as session:
         return await PatientRepository(session).list(page=page, page_size=page_size, search=search, sex=sex)
 
 
 async def _ensure_patient(session, patient_id: str) -> PatientRepository:
+    """执行患者访问边界校验并返回受限仓储。"""
     if not await PatientAccessService(session).can_access_patient(patient_id):
         raise HTTPException(status_code=404, detail="未找到患者")
     return PatientRepository(session)
@@ -50,6 +53,7 @@ async def _ensure_patient(session, patient_id: str) -> PatientRepository:
 
 @router.get("/{patient_id}")
 async def get_patient(patient_id: str) -> dict:
+    """返回临床工作区可见的患者摘要。"""
     async with get_session_factory()() as session:
         repository = await _ensure_patient(session, patient_id)
         return await repository.summary(patient_id)
@@ -57,6 +61,7 @@ async def get_patient(patient_id: str) -> dict:
 
 @router.patch("/{patient_id}")
 async def update_patient(patient_id: str, payload: PatientUpdateRequest) -> dict:
+    """更新允许编辑的患者人口学和病史字段。"""
     async with get_session_factory()() as session:
         repository = await _ensure_patient(session, patient_id)
         patient = await repository.update_patient(patient_id, **payload.model_dump(exclude_unset=True))
@@ -67,6 +72,7 @@ async def update_patient(patient_id: str, payload: PatientUpdateRequest) -> dict
 
 @router.get("/{patient_id}/overview")
 async def get_patient_overview(patient_id: str) -> dict:
+    """为患者概览页聚合近期临床记录。"""
     async with get_session_factory()() as session:
         repository = await _ensure_patient(session, patient_id)
         summary = await repository.summary(patient_id)
@@ -88,29 +94,34 @@ async def get_patient_overview(patient_id: str) -> dict:
 
 @router.get("/{patient_id}/visits")
 async def get_visits(patient_id: str) -> dict:
+    """返回当前可访问患者的全部就诊记录。"""
     async with get_session_factory()() as session:
         return await (await _ensure_patient(session, patient_id)).visits(patient_id)
 
 
 @router.get("/{patient_id}/labs")
 async def get_labs(patient_id: str) -> dict:
+    """返回当前可访问患者的全部检验结果。"""
     async with get_session_factory()() as session:
         return await (await _ensure_patient(session, patient_id)).labs(patient_id)
 
 
 @router.get("/{patient_id}/imaging")
 async def get_imaging(patient_id: str) -> dict:
+    """返回当前可访问患者的全部影像报告。"""
     async with get_session_factory()() as session:
         return await (await _ensure_patient(session, patient_id)).imaging(patient_id)
 
 
 @router.get("/{patient_id}/medications")
 async def get_medications(patient_id: str) -> dict:
+    """返回当前可访问患者的全部用药记录。"""
     async with get_session_factory()() as session:
         return await (await _ensure_patient(session, patient_id)).medications(patient_id)
 
 
 @router.get("/{patient_id}/allergies")
 async def get_allergies(patient_id: str) -> dict:
+    """返回当前可访问患者的全部过敏记录。"""
     async with get_session_factory()() as session:
         return await (await _ensure_patient(session, patient_id)).allergies(patient_id)

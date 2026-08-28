@@ -38,6 +38,7 @@ async def list_cases(
     risk_level: str | None = None,
     search: str | None = Query(None, max_length=120),
 ) -> dict:
+    """返回当前工作区筛选后的诊断病例。"""
     async with get_session_factory()() as session:
         return await CaseRepository(session).list(
             page=page,
@@ -52,12 +53,14 @@ async def list_cases(
 async def pending_reviews(
     page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
 ) -> dict:
+    """按照风险优先级返回等待医生审核的病例。"""
     async with get_session_factory()() as session:
         return await CaseRepository(session).list(page=page, page_size=page_size, pending_only=True)
 
 
 @router.get("/cases/{case_id}", response_model=CaseResponse)
 async def get_case(case_id: str) -> CaseResponse:
+    """返回病例及其最新 AI 评估和医生审核状态。"""
     async with get_session_factory()() as session:
         case = await CaseRepository(session).get(case_id)
         if case is None:
@@ -88,6 +91,7 @@ async def get_case(case_id: str) -> CaseResponse:
 
 @router.get("/cases/{case_id}/history", response_model=HistoryResponse)
 async def case_history(case_id: str, graph=Depends(get_graph)) -> HistoryResponse:
+    """返回病例检查点历史的安全业务摘要。"""
     async with get_session_factory()() as session:
         case = await CaseRepository(session).get(case_id)
         if case is None:
@@ -98,6 +102,7 @@ async def case_history(case_id: str, graph=Depends(get_graph)) -> HistoryRespons
 
 @router.get("/cases/{case_id}/events")
 async def case_events(case_id: str, request: Request, graph=Depends(get_graph)) -> StreamingResponse:
+    """通过服务器推送事件持续输出图进度和落库状态变化。"""
     async with get_session_factory()() as session:
         case = await CaseRepository(session).get(case_id)
         if case is None:
@@ -105,6 +110,7 @@ async def case_events(case_id: str, request: Request, graph=Depends(get_graph)) 
         thread_id = case.thread_id
 
     async def stream():
+        """持续输出事件帧，直到病例结束或客户端断开连接。"""
         emitted: set[str] = set()
         while not await request.is_disconnected():
             try:

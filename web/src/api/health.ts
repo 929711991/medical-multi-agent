@@ -15,5 +15,6 @@ export interface HealthStatus {
 }
 
 export async function getHealth(): Promise<HealthStatus> {
+  /** 获取后端依赖服务的聚合健康状态。 */
   return (await axios.get<HealthStatus>('/health', { withCredentials: true, timeout: 45_000 })).data
 }

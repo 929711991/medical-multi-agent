@@ -60,6 +60,7 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
+        """生成已转义密码的业务数据库 SQLAlchemy 地址。"""
         password = quote_plus(self.mysql_password)
         return (
             f"mysql+asyncmy://{self.mysql_user}:{password}@{self.mysql_host}:"
@@ -68,6 +69,7 @@ class Settings(BaseSettings):
 
     @property
     def checkpoint_url(self) -> str:
+        """生成已转义密码的 LangGraph 检查点数据库地址。"""
         password = quote_plus(self.mysql_password)
         return (
             f"mysql+asyncmy://{self.mysql_user}:{password}@{self.mysql_host}:"
@@ -76,14 +78,17 @@ class Settings(BaseSettings):
 
     @property
     def redis_url(self) -> str:
+        """生成向量检索使用的带认证 Redis 地址。"""
         password = f":{quote_plus(self.redis_password)}@" if self.redis_password else ""
         return f"redis://{password}{self.redis_host}:{self.redis_port}/{self.redis_database}"
 
     def validate_llm(self) -> None:
+        """真实大模型调用缺少凭据时抛出配置错误。"""
         if not self.aliyun_llm_api_key:
             raise RuntimeError("执行真实诊断流程必须配置 ALIYUN_LLM_API_KEY")
 
     def validate_rag(self) -> None:
+        """校验当前运行模式所需的向量模型与 RAG 配置。"""
         if not self.rag_enabled:
             if self.rag_required:
                 raise RuntimeError("RAG_REQUIRED=true 时不允许关闭 RAG")
@@ -96,4 +101,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """加载并缓存由环境变量驱动的应用配置。"""
     return Settings()

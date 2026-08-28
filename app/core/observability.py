@@ -14,6 +14,7 @@ def observed_node(name: str, node: Callable[[DiagnosisState], Awaitable[dict[str
     """为图节点增加统一耗时和执行状态日志，不记录完整病历内容。"""
 
     async def wrapped(state: DiagnosisState) -> dict[str, Any]:
+        """统计单个图节点调用耗时，并附加安全的结构化上下文。"""
         started = perf_counter()
         status = "成功"
         try:
@@ -37,4 +38,3 @@ def observed_node(name: str, node: Callable[[DiagnosisState], Awaitable[dict[str
             )
 
     return wrapped
-

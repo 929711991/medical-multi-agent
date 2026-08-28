@@ -7,6 +7,7 @@ from app.core.config import get_settings
 
 @lru_cache(maxsize=1)
 def get_llm() -> ChatOpenAI:
+    """创建配置指定的 OpenAI 兼容对话模型客户端。"""
     settings = get_settings()
     settings.validate_llm()
     return ChatOpenAI(
@@ -17,4 +18,3 @@ def get_llm() -> ChatOpenAI:
         timeout=60,
         max_retries=2,
     )
-

@@ -5,6 +5,7 @@ from app.schemas.diagnosis import HistoryItem
 
 
 async def get_history(graph: Any, thread_id: str) -> list[HistoryItem]:
+    """将原始图检查点转换为安全且按时间排序的业务历史。"""
     items: list[HistoryItem] = []
     async for snapshot in graph.aget_state_history(graph_config(thread_id)):
         values = snapshot.values or {}
@@ -22,4 +23,3 @@ async def get_history(graph: Any, thread_id: str) -> list[HistoryItem]:
             )
         )
     return items
-

@@ -16,6 +16,7 @@ async def create_diagnosis(
     request: Request,
     graph=Depends(get_graph),
 ) -> DiagnosisCreateResponse:
+    """创建持久化病例，并在后台调度诊断图。"""
     try:
         case_id, thread_id = await DiagnosisService.create_case(
             patient_id=payload.patient_id,

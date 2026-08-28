@@ -10,10 +10,12 @@ EMAIL_PATTERN = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
 
 def redact_direct_identifiers(text: str) -> str:
+    """遮盖传入智能体上下文中的直接身份标识。"""
     return EMAIL_PATTERN.sub("[REDACTED_EMAIL]", PHONE_PATTERN.sub("[REDACTED_PHONE]", text))
 
 
 def build_agent_middleware() -> list[object]:
+    """创建智能体调用使用的安全与限额中间件。"""
     settings = get_settings()
     return [
         PIIMiddleware("email", strategy="redact", apply_to_input=True, apply_to_output=True),

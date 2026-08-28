@@ -18,6 +18,7 @@ from app.persistence.models import (
 
 
 async def seed() -> None:
+    """初始化隔离环境演示数据，重复执行时不覆盖已有业务数据。"""
     await initialize_schema()
     async with get_session_factory()() as session:
         existing = await session.scalar(select(Patient.id).limit(1))
@@ -26,6 +27,7 @@ async def seed() -> None:
             return
 
         now = datetime.now(UTC)
+        # 先准备基础档案，再批量创建与患者业务编号关联的临床记录。
         patients = [
             Patient(
                 id="PT-CARDIO",
@@ -129,6 +131,7 @@ async def seed() -> None:
 
 
 async def main() -> None:
+    """运行演示数据初始化，并在结束时释放数据库连接。"""
     try:
         await seed()
     finally:

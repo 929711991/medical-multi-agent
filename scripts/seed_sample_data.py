@@ -10,6 +10,7 @@ from app.persistence.models import Allergy, Doctor, ImagingReport, LabResult, Me
 
 
 async def seed() -> None:
+    """初始化隔离环境样例数据，已存在患者时保持幂等并跳过写入。"""
     await initialize_schema()
     async with get_session_factory()() as session:
         existing = await session.scalar(select(Patient.id).limit(1))
@@ -18,6 +19,7 @@ async def seed() -> None:
             return
 
         now = datetime.now(UTC)
+        # 患者、医生先写入并刷新主键，再写入依赖患者业务编号的临床记录。
         patients = [
             Patient(id="PT-CARDIO", display_name="心内科患者 A", birth_date=date(1968, 5, 10), sex="male", summary_json={"sandbox": True, "history": ["高血压病史 8 年"], "privacy": "隔离环境样例数据"}, data_scope="sandbox", source_channel="seed"),
             Patient(id="PT-GASTRO", display_name="消化科患者 B", birth_date=date(1986, 11, 2), sex="female", summary_json={"sandbox": True, "history": ["间断胃部不适"], "privacy": "隔离环境样例数据"}, data_scope="sandbox", source_channel="seed"),
@@ -44,6 +46,7 @@ async def seed() -> None:
 
 
 async def main() -> None:
+    """运行样例数据初始化，并确保无论成功失败都关闭数据库连接。"""
     try:
         await seed()
     finally:

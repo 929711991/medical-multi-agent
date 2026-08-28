@@ -14,15 +14,18 @@ SOURCE_ROOT = Path(__file__).resolve().parents[1] / "knowledge" / "source"
 
 
 def _document_id(path: Path) -> str:
+    """根据知识文档相对路径生成稳定的文档业务编号。"""
     relative = path.relative_to(SOURCE_ROOT).as_posix()
     return hashlib.sha256(relative.encode("utf-8")).hexdigest()[:32]
 
 
 def _checksum(text: str) -> str:
+    """计算文档正文校验和，用于判断是否需要重复入库。"""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 async def ingest_file(path: Path) -> str:
+    """读取、分片、向量化并持久化单个医学知识文档。"""
     settings = get_settings()
     settings.validate_rag()
     text = load_document(path).strip()
@@ -37,6 +40,7 @@ async def ingest_file(path: Path) -> str:
     async with get_session_factory()() as session:
         repository = KnowledgeRepository(session)
         existing = await repository.get(document_id)
+        # 内容未变化时保留现有向量，避免重复调用嵌入服务并降低索引抖动。
         if existing and existing.status == "READY" and existing.checksum == checksum:
             return f"SKIP {source}"
         await repository.save_state(
@@ -56,6 +60,7 @@ async def ingest_file(path: Path) -> str:
         raise RuntimeError(f"Embedding 返回数量异常：{source}")
 
     await ensure_index(len(vectors[0]))
+    # 先删除同一文档的旧分片，再批量写入新分片，保证检索结果不会混入旧版本。
     await delete_document(document_id)
     rows = []
     for index, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
@@ -90,6 +95,7 @@ async def ingest_file(path: Path) -> str:
 
 
 async def main() -> None:
+    """扫描知识目录并逐个执行入库，记录失败文档后统一返回失败状态。"""
     await initialize_schema()
     SOURCE_ROOT.mkdir(parents=True, exist_ok=True)
     files = sorted(path for path in SOURCE_ROOT.rglob("*") if supported_document(path))
@@ -101,6 +107,7 @@ async def main() -> None:
         try:
             print(await ingest_file(path))
         except Exception as exc:
+            # 单个文档失败不影响其余文档继续处理，最后统一抛出失败汇总。
             failures.append(f"{path.name}: {type(exc).__name__}: {exc}")
             async with get_session_factory()() as session:
                 await KnowledgeRepository(session).save_state(

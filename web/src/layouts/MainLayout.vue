@@ -18,7 +18,9 @@ const menu = computed(() => [
 ])
 const health = ref<HealthStatus | null>(null)
 const healthLabel = computed(() => !health.value ? '系统状态检查中' : health.value.status === 'ok' ? '系统服务正常' : health.value.status === 'down' ? '系统服务不可用' : '部分服务异常')
+// 顶部状态入口按需刷新依赖健康状态，避免每次路由切换都重复请求。
 async function loadHealth() { try { health.value = await getHealth() } catch { health.value = null } }
+// 退出登录后清理本地身份状态，并回到登录页面。
 async function signOut() { await auth.logout(); await router.push('/login') }
 onMounted(loadHealth)
 </script>

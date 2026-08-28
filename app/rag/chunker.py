@@ -2,6 +2,7 @@ from app.core.config import get_settings
 
 
 def chunk_text(text: str) -> list[str]:
+    """按照配置长度和重叠区间切分知识文本。"""
     settings = get_settings()
     normalized = "\n".join(line.strip() for line in text.replace("\r\n", "\n").split("\n"))
     normalized = normalized.strip()

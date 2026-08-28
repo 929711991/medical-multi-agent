@@ -11,16 +11,19 @@ const saving = ref(false)
 const form = reactive({ name: '', sex: 'male', birth_date: '', history: '' })
 
 function disableFutureDate(value: Date) {
+  // 日期选择器只允许今天及以前的出生日期。
   const today = new Date()
   today.setHours(23, 59, 59, 999)
   return value.getTime() > today.getTime()
 }
 
 function close() {
+  // 通过双向绑定通知父页面关闭弹窗。
   emit('update:modelValue', false)
 }
 
 async function submit() {
+  // 先在页面端清理输入，再提交后端进行同样的业务校验。
   if (!form.name.trim()) {
     ElMessage.warning('请输入患者姓名')
     return

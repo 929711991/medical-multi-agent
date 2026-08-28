@@ -21,6 +21,7 @@ MEDIUM_RULES = ("胸痛", "呼吸困难", "腹痛", "呕吐", "头晕")
 
 
 def screen_risk(text: str) -> RiskScreeningResult:
+    """根据确定性规则识别必须优先处理的紧急风险。"""
     normalized = text.lower().strip()
     red_flags = [label for label, terms in EMERGENCY_RULES.items() if any(t in normalized for t in terms)]
     if red_flags:
@@ -32,4 +33,3 @@ def screen_risk(text: str) -> RiskScreeningResult:
     if medium:
         return RiskScreeningResult("medium", medium)
     return RiskScreeningResult("low", [])
-

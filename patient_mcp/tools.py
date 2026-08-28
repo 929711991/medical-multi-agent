@@ -10,6 +10,7 @@ logger = logging.getLogger("medical.mcp")
 
 
 async def _patient_call(patient_id: str, method: str) -> dict[str, Any]:
+    """统一执行患者查询，隔离数据库异常并记录工具耗时。"""
     started = perf_counter()
     status = "成功"
     tool_name = {
@@ -22,6 +23,7 @@ async def _patient_call(patient_id: str, method: str) -> dict[str, Any]:
         "allergies": "get_allergies",
     }.get(method, method)
     try:
+        # MCP 只允许调用仓储层的既定查询方法，避免把任意数据库操作暴露给智能体。
         async with get_session_factory()() as session:
             repository = PatientRepository(session)
             return await getattr(repository, method)(patient_id)

@@ -10,6 +10,7 @@ CARDIOLOGY_PROMPT = """你是心血管专科辅助分析 SubAgent。仅分析输
 
 
 def create_cardiology_agent():
+    """创建用于心内科分析的深度智能体。"""
     return create_deep_agent(
         model=get_llm(),
         tools=[],
@@ -18,4 +19,3 @@ def create_cardiology_agent():
         response_format=SpecialistOpinion,
         name="cardiology_specialist",
     )
-

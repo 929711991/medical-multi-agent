@@ -59,6 +59,7 @@ class DoctorReviewRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_edit(self) -> "DoctorReviewRequest":
+        """校验编辑审核动作必须携带完整的结构化诊断结果。"""
         if self.action == "edit" and self.edited_result is None:
             raise ValueError("action 为 edit 时必须提供 edited_result")
         return self
@@ -72,6 +73,7 @@ class GraphDoctorReview(BaseModel):
 
     @model_validator(mode="after")
     def validate_edit(self) -> "GraphDoctorReview":
+        """校验图恢复命令中的编辑结果和审核字段。"""
         if self.action == "edit" and self.edited_result is None:
             raise ValueError("action 为 edit 时必须提供 edited_result")
         return self
