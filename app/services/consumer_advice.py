@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 
 from app.schemas.diagnosis import DiagnosisResult
+from app.schemas.evidence import KnowledgeEvidence
 from app.services.consumer_intake import DepartmentResolver
 
 
@@ -11,6 +12,8 @@ class ConsumerAdvice(BaseModel):
     warning_signs: list[str] = Field(default_factory=list)
     medication_safety: list[str] = Field(default_factory=list)
     recommended_department_code: str
+    evidence: list[KnowledgeEvidence] = Field(default_factory=list)
+    rag_enabled: bool = False
     ai_generated: bool = True
     disclaimer: str = "AI 生成内容仅供健康参考，不替代医生诊疗；请勿据此自行确诊或调整处方。"
 
@@ -49,4 +52,6 @@ class ConsumerAdviceAssembler:
             warning_signs=list(dict.fromkeys(result.red_flags)),
             medication_safety=MedicationSafetyGuard.sanitize([]),
             recommended_department_code=department,
+            evidence=result.evidence,
+            rag_enabled=result.rag_enabled,
         )

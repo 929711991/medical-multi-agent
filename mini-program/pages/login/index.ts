@@ -1,4 +1,4 @@
-import { request } from '../../utils/request'
+import { httpPost, storeToken } from '../../service/http'
 
 Page({
   data: { loading: false },
@@ -7,8 +7,8 @@ Page({
     wx.login({
       success: async ({ code }) => {
         try {
-          const result = await request<{ access_token: string }>('/auth/wechat', { method: 'POST', data: { code }, anonymous: true })
-          wx.setStorageSync('consumer_token', result.access_token)
+          const result = await httpPost<{ access_token: string }>('/auth/wechat', { code }, { anonymous: true })
+          storeToken(result.access_token)
           wx.reLaunch({ url: '/pages/home/index' })
         } catch (error: any) { wx.showToast({ title: error.detail || '登录失败', icon: 'none' }) }
         finally { this.setData({ loading: false }) }

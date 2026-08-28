@@ -19,6 +19,21 @@ test('doctor login restores the protected workspace', async ({ page }) => {
 
 test('RAG-disabled evidence state does not invent sources', async ({ page }) => {
   await page.route('**/api/v1/auth/me', async (route) => route.fulfill({ json: doctor }))
+  await page.route('**/api/v1/knowledge/status', async (route) => route.fulfill({
+    json: {
+      rag_enabled: false,
+      rag_required: false,
+      rag_ready: false,
+      redis: 'not configured',
+      collection: 'medical_knowledge_v1',
+      embedding_model: null,
+      knowledge_documents: 0,
+      message: '当前未启用外部医学知识库，不会展示伪造证据',
+    },
+  }))
+  await page.route('**/api/v1/knowledge/documents**', async (route) => route.fulfill({
+    json: { items: [], page: 1, page_size: 50, total: 0 },
+  }))
   await page.goto('/knowledge')
   await expect(page.getByText('当前未启用外部医学知识库')).toBeVisible()
   await expect(page.getByText('不会展示伪造证据')).toBeVisible()

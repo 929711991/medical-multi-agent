@@ -49,14 +49,14 @@ async def _check_llm() -> bool:
         return False
 
 
-async def _check_rag() -> tuple[bool, bool, int]:
+async def _check_rag() -> tuple[bool, bool, bool, bool, int]:
     """检查 Redis 向量索引、向量模型和已就绪文档数量。"""
     settings = get_settings()
     if not settings.rag_enabled:
-        return False, False, 0
+        return False, False, False, False, 0
     redis_ready = await redis_health()
     if not redis_ready:
-        return False, False, 0
+        return False, False, False, False, 0
     index_ready = await has_index()
     async with get_session_factory()() as session:
         document_count = await KnowledgeRepository(session).count_ready()
@@ -67,7 +67,13 @@ async def _check_rag() -> tuple[bool, bool, int]:
             embedding_ready = bool(vector)
         except Exception:
             embedding_ready = False
-    return bool(index_ready and embedding_ready and document_count > 0), redis_ready, document_count
+    return (
+        bool(index_ready and embedding_ready and document_count > 0),
+        redis_ready,
+        index_ready,
+        embedding_ready,
+        document_count,
+    )
 
 
 async def _check_job_queue() -> tuple[bool, bool]:
@@ -94,7 +100,7 @@ async def collect_health() -> dict[str, Any]:
         _check_rag(),
         _check_job_queue(),
     )
-    rag_ready, redis_ready, document_count = rag
+    rag_ready, redis_ready, index_ready, embedding_ready, document_count = rag
     queue_ready, worker_ready = job
     critical = [mysql_ready, checkpoint_ready, mcp_ready, llm_ready, queue_ready, worker_ready]
     if settings.rag_required:
@@ -113,8 +119,9 @@ async def collect_health() -> dict[str, Any]:
         "rag_required": settings.rag_required,
         "rag_ready": rag_ready,
         "redis": "ready" if redis_ready else "down",
-        "redis_vector_ready": rag_ready,
+        "redis_vector_ready": index_ready,
         "embedding_configured": bool(settings.embedding_model and settings.embedding_api_key),
+        "embedding_ready": embedding_ready,
         "ai_queue": "ready" if queue_ready else "down",
         "ai_worker": "ready" if worker_ready else "down",
         "knowledge_documents": document_count,

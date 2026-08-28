@@ -1,0 +1,23 @@
+{
+  "dev": {
+    "name": "本地开发",
+    "host": "http://127.0.0.1:8002/api/v1/consumer",
+    "requestTimeout": 30000,
+    "tokenStorageKey": "consumer_token",
+    "version": "1.2.0"
+  },
+  "self": {
+    "name": "局域网联调",
+    "host": "http://localhost:8002/api/v1/consumer",
+    "requestTimeout": 30000,
+    "tokenStorageKey": "consumer_token",
+    "version": "1.2.0"
+  },
+  "prod": {
+    "name": "正式环境（部署前配置合法 HTTPS 域名）",
+    "host": "",
+    "requestTimeout": 30000,
+    "tokenStorageKey": "consumer_token",
+    "version": "1.2.0"
+  }
+}

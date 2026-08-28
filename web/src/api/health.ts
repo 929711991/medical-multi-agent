@@ -1,4 +1,5 @@
-import axios from 'axios'
+import globalConfig from '../service/config'
+import { httpGet } from '../service/http'
 
 export interface HealthStatus {
   status: 'ok' | 'degraded' | 'down'
@@ -11,10 +12,12 @@ export interface HealthStatus {
   rag_required: boolean
   rag_ready: boolean
   redis: string
+  redis_vector_ready: boolean
+  embedding_ready: boolean
   knowledge_documents: number
 }
 
 export async function getHealth(): Promise<HealthStatus> {
   /** 获取后端依赖服务的聚合健康状态。 */
-  return (await axios.get<HealthStatus>('/health', { withCredentials: true, timeout: 45_000 })).data
+  return httpGet<HealthStatus>(globalConfig.healthUrl, undefined, { baseURL: '/' })
 }

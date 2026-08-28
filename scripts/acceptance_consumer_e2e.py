@@ -1,4 +1,6 @@
 import asyncio
+import atexit
+import hashlib
 import json
 import time
 from uuid import uuid4
@@ -8,6 +10,9 @@ import httpx
 from app.core.config import get_settings
 from app.persistence.consumer_repositories import ConsumerUserRepository
 from app.persistence.database import close_database, get_session_factory
+from app.persistence.repositories import KnowledgeRepository
+from app.rag.embedding import embed_documents
+from app.rag.redis_store import delete_document, ensure_index, reset_redis_client, upsert
 from app.services.consumer_auth import issue_consumer_token
 
 
@@ -22,6 +27,57 @@ async def _create_acceptance_user(suffix: str) -> str:
         user_id = str(user.id)
     await close_database()
     return user_id
+
+
+async def _install_acceptance_knowledge(suffix: str) -> str:
+    reset_redis_client()
+    document_id = f"consumer-acceptance-{suffix}"
+    text = (
+        "V1.2 跨端验收知识：右下腹进行性疼痛伴恶心需要及时线下评估；"
+        "持续压榨性胸痛伴大汗或呼吸困难属于急症警示，应立即呼叫急救。"
+    )
+    vector = (await embed_documents([text]))[0]
+    await ensure_index(len(vector))
+    await upsert(
+        [
+            {
+                "id": f"{document_id}-00000",
+                "document_id": document_id,
+                "chunk_id": f"{document_id}-00000",
+                "title": "V1.2 Consumer 跨端 RAG 验收知识",
+                "text": text,
+                "source": "acceptance-consumer-e2e",
+                "source_type": "test",
+                "version": "1.2",
+                "embedding": vector,
+            }
+        ]
+    )
+    async with get_session_factory()() as session:
+        await KnowledgeRepository(session).save_state(
+            document_id=document_id,
+            title="V1.2 Consumer 跨端 RAG 验收知识",
+            source="acceptance-consumer-e2e",
+            source_type="test",
+            version="1.2",
+            checksum=hashlib.sha256(text.encode("utf-8")).hexdigest(),
+            status="READY",
+            chunk_count=1,
+        )
+    await close_database()
+    return document_id
+
+
+async def _remove_acceptance_knowledge(document_id: str) -> None:
+    reset_redis_client()
+    await delete_document(document_id)
+    async with get_session_factory()() as session:
+        document = await KnowledgeRepository(session).get(document_id)
+        if document is not None:
+            await session.delete(document)
+            await session.commit()
+    await close_database()
+    reset_redis_client()
 
 
 def _wait_consultation(client: httpx.Client, consultation_id: str, terminal: set[str]) -> dict:
@@ -50,6 +106,8 @@ def _wait_case(client: httpx.Client, case_id: str) -> dict:
 
 def main() -> None:
     suffix = uuid4().hex[:10]
+    acceptance_document_id = asyncio.run(_install_acceptance_knowledge(suffix))
+    atexit.register(lambda: asyncio.run(_remove_acceptance_knowledge(acceptance_document_id)))
     user_id = asyncio.run(_create_acceptance_user(suffix))
     token, _ = issue_consumer_token(user_id)
     headers = {"Authorization": f"Bearer {token}"}
@@ -98,6 +156,11 @@ def main() -> None:
             item["sender_type"] == "AI" and (item.get("metadata") or {}).get("advice")
             for item in gastro_messages.json()
         )
+        assert any(
+            evidence.get("document_id") == acceptance_document_id
+            for item in gastro_messages.json()
+            for evidence in ((item.get("metadata") or {}).get("advice") or {}).get("evidence", [])
+        ), "consumer AI result did not preserve the exact RAG acceptance evidence"
 
         emergency = consumer.post("/consultations", json={"patient_id": patient_id})
         emergency.raise_for_status()

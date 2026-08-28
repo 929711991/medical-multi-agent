@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
-import { apiErrorMessage } from '../../utils/request'
+import { apiErrorMessage } from '../../service/http'
 
 const form = reactive({ account: 'admin', password: '' })
 const loading = ref(false); const auth = useAuthStore(); const router = useRouter(); const route = useRoute()

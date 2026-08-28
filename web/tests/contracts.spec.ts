@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { apiErrorMessage } from '../src/utils/request'
+import { apiErrorMessage } from '../src/service/http'
 import { confidenceLabel, statusLabels } from '../src/utils/medical'
 
 describe('frontend contracts', () => {

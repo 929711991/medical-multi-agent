@@ -4,7 +4,7 @@ import { ElMessage } from 'element-plus'
 import { createPatient, getDepartments } from '../../api/patient'
 import type { Department } from '../../types/patient'
 import { useAuthStore } from '../../stores/auth'
-import { apiErrorMessage } from '../../utils/request'
+import { apiErrorMessage } from '../../service/http'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; created: [patientId: string] }>()

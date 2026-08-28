@@ -10,13 +10,20 @@ test('doctor completes the flow from patient creation to final review', async ({
 
   await page.goto('/login')
   await page.getByPlaceholder('请输入密码').fill('111111')
+  const loginResponsePromise = page.waitForResponse(
+    (response) => response.request().method() === 'POST' && response.url().endsWith('/api/v1/auth/login'),
+  )
   await page.getByRole('button', { name: '登录工作台' }).click()
+  const loginResponse = await loginResponsePromise
+  expect(loginResponse.status()).toBe(200)
+  const login = (await loginResponse.json()) as { user: { doctor_id: string } }
   await expect(page).toHaveURL(/\/dashboard$/)
 
   await page.getByRole('link', { name: '患者中心' }).click()
   await expect(page.getByRole('heading', { name: '患者中心' })).toBeVisible()
   await page.getByRole('button', { name: /添加患者/ }).click()
   await page.getByPlaceholder('例如：张某').fill(patientName)
+  await page.getByPlaceholder(/最主要的不适/).fill('活动后胸痛两天，伴出汗')
   await page.getByPlaceholder(/每行一条/).fill('高血压病史5年\n近期活动后胸痛')
 
   const patientResponsePromise = page.waitForResponse(
@@ -52,7 +59,7 @@ test('doctor completes the flow from patient creation to final review', async ({
   expect(reviewResponse.status()).toBe(200)
   const reviewed = (await reviewResponse.json()) as { status: string; reviewer_id: string | null }
   expect(reviewed.status).toBe('FINAL')
-  expect(reviewed.reviewer_id).toBe('DEMO-D-001')
+  expect(reviewed.reviewer_id).toBe(login.user.doctor_id)
 
   await page.getByRole('link', { name: '诊断复盘' }).click()
   await expect(page).toHaveURL(new RegExp(`/cases/${diagnosis.case_id}/history$`))

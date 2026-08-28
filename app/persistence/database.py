@@ -502,7 +502,7 @@ async def initialize_schema() -> None:
                 text(
                     "INSERT INTO departments (pk_id, code, name, enabled, sort_order) "
                     "VALUES (:pk_id, :code, :name, 1, :sort_order) "
-                    "ON DUPLICATE KEY UPDATE name = VALUES(name), sort_order = VALUES(sort_order)"
+                    "ON DUPLICATE KEY UPDATE name = :name, sort_order = :sort_order"
                 ),
                 {
                     "pk_id": generate_snowflake_id(),

@@ -203,8 +203,16 @@ class PatientRepository:
             access_filter = or_(access_filter, escalated)
         filters = [access_filter]
         if search:
-            term = f"%{search.strip()}%"
-            filters.append(or_(Patient.id.like(term), Patient.display_name.like(term)))
+            normalized_search = search.strip()
+            term = f"%{normalized_search}%"
+            identifier = _identifier_value(normalized_search, "patient")
+            filters.append(
+                or_(
+                    Patient.id == identifier,
+                    Patient.id.like(term),
+                    Patient.display_name.like(term),
+                )
+            )
         if sex:
             filters.append(Patient.sex == sex)
         total = await self.session.scalar(select(func.count()).select_from(Patient).where(*filters)) or 0
@@ -491,13 +499,25 @@ class CaseRepository:
             filters.append(MedicalCase.risk_level == risk_level)
         statement = select(MedicalCase).options(selectinload(MedicalCase.assessments))
         if search:
-            term = f"%{search.strip()}%"
-            statement = statement.join(Patient).where(or_(MedicalCase.id.like(term), Patient.display_name.like(term)))
+            normalized_search = search.strip()
+            term = f"%{normalized_search}%"
+            identifier = _identifier_value(normalized_search, "case")
+            statement = statement.join(Patient).where(
+                or_(
+                    MedicalCase.id == identifier,
+                    MedicalCase.id.like(term),
+                    Patient.display_name.like(term),
+                )
+            )
         statement = statement.where(*filters)
         total_statement = select(func.count()).select_from(MedicalCase).where(*filters)
         if search:
             total_statement = total_statement.join(Patient).where(
-                or_(MedicalCase.id.like(term), Patient.display_name.like(term))
+                or_(
+                    MedicalCase.id == identifier,
+                    MedicalCase.id.like(term),
+                    Patient.display_name.like(term),
+                )
             )
         total = await self.session.scalar(total_statement) or 0
         if pending_only:

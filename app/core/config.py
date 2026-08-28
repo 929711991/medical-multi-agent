@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore", case_sensitive=False
     )
 
-    app_name: str = "医疗辅助多智能体 V1.1"
+    app_name: str = "医疗辅助多智能体 V1.2"
     api_prefix: str = "/api/v1"
     aliyun_llm_api_key: str | None = Field(default=None, repr=False)
     aliyun_llm_base_url: str = (
