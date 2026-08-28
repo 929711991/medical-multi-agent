@@ -4,6 +4,7 @@ import httpx
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 
+from app.core.config import get_settings
 from app.graph.workflow import build_diagnosis_graph
 from app.main import create_app
 from tests.conftest import fake_cardiology, fake_gastro, fake_medical, fake_records
@@ -40,12 +41,12 @@ async def test_api_create_review_and_history() -> None:
     ) as client:
         logged_in = await client.post(
             "/api/v1/auth/login",
-            json={"account": "DEMO-D-001", "password": "demo-clinical"},
+            json={"account": "DR-001", "password": get_settings().login_password},
         )
         assert logged_in.status_code == 200, logged_in.text
         created = await client.post(
             "/api/v1/diagnoses",
-            json={"patient_id": "DEMO-P-CARDIO", "question": "活动后胸痛并有高血压史"},
+            json={"patient_id": "PT-CARDIO", "question": "活动后胸痛并有高血压史"},
         )
         assert created.status_code == 202, created.text
         case_id = created.json()["case_id"]

@@ -2,7 +2,7 @@
 
 本文严格依据当前项目代码整理，用于从业务视角和代码视角理解一次医疗辅助诊断如何创建、暂停、审核、恢复、持久化与查询。
 
-> 系统定位：AI 只生成医生辅助决策草稿，不生成无需审核的最终临床诊断。所有数据均为虚构 DEMO 数据。
+> 系统定位：AI 只生成医生辅助决策草稿，不生成无需审核的最终临床诊断。当前默认使用隔离环境样例数据。
 
 ## 一、整体业务参与者与边界
 
@@ -11,10 +11,10 @@ flowchart LR
     User["医生或系统使用者"]
     API["医疗辅助诊断 API"]
     AI["AI 辅助分析流程"]
-    Reviewer["具备 DEMO 编号的审核医生"]
+    Reviewer["具备系统账号的审核医生"]
     Final["审核后的最终结果"]
 
-    User -->|"提交 DEMO 患者编号和问题"| API
+    User -->|"提交患者编号和问题"| API
     API -->|"启动诊断图"| AI
     AI -->|"生成 AI_DRAFT"| Reviewer
     Reviewer -->|"approve：通过"| Final
@@ -26,7 +26,7 @@ flowchart LR
 
 业务边界：
 
-- 当前只允许访问以 `DEMO-` 开头且确实存在于数据库中的虚构患者。
+- 当前只允许访问 `data_scope=sandbox` 且确实存在于数据库中的授权范围患者。
 - AI 只能读取患者数据，不允许通过 MCP 更新病历、删除记录或开具处方。
 - 确定性风险规则先于专科智能体运行，高危结果不能被后续模型降级。
 - RAG 未配置时诊断流程仍可继续，但结果必须明确 `rag_enabled=false`、`evidence=[]`。
@@ -38,7 +38,7 @@ flowchart LR
 flowchart TD
     Start(["开始"])
     Submit["提交 patient_id 和医疗问题"]
-    Access{"是否为允许访问的 DEMO 患者？"}
+    Access{"是否为当前授权范围患者？"}
     NotFound["返回 404：未找到患者"]
     CreateCase["创建 MedicalCase 和待审核 MedicalAssessment"]
     InitState["生成 case_id；thread_id 与 case_id 一一对应"]
@@ -279,7 +279,7 @@ sequenceDiagram
     participant CP as medical_ai_graph
 
     User->>API: POST /api/v1/diagnoses
-    API->>Access: 校验 DEMO patient_id
+    API->>Access: 校验 patient_id 数据访问范围
     Access->>Biz: 查询患者是否存在
     Biz-->>Access: 患者存在
     API->>Biz: 创建 MedicalCase 和 MedicalAssessment

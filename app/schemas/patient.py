@@ -22,7 +22,7 @@ class PatientCreateRequest(BaseModel):
     @classmethod
     def birth_date_not_future(cls, value: date | None) -> date | None:
         if value and value > date.today():
-            raise ValueError("出生日期不能晚于今天")
+            raise ValueError("出生日期不能晚于今天，请重新选择")
         return value
 
 

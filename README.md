@@ -2,7 +2,7 @@
 
 这是一个供医生使用的医疗辅助决策演示项目，不是“自动医生”，也不能替代临床诊断。系统生成的内容始终是 `AI_DRAFT`；只有经过医生 `approve`、`edit` 或 `reject` 审核后，流程才会结束。未经审核的草稿绝不会成为 `FINAL`。
 
-项目只使用完全虚构、带 `DEMO` 标识的数据，请勿导入真实患者隐私信息。
+项目默认使用隔离环境样例数据；接入真实患者数据前必须完成授权、隐私和安全合规配置。
 
 ## 你可以从哪里开始读代码
 
@@ -114,10 +114,10 @@ Compose 只启动一个 MySQL 容器，同时创建两个数据库。数据目�
 
 ```powershell
 python -m scripts.init_db
-python -m scripts.seed_demo_data
+python -m scripts.seed_sample_data
 ```
 
-初始化脚本可重复执行；种子脚本检测到已有 DEMO 数据时不会重复插入。
+初始化脚本可重复执行；种子脚本检测到已有样例数据时不会重复插入。
 
 ### 3. 启动只读 MCP 服务
 
@@ -145,13 +145,13 @@ Invoke-RestMethod http://127.0.0.1:8000/health
 
 `llm_configured=false` 表示没有读取到 API Key；健康检查仍可用，但真实诊断请求会返回清晰错误。
 
-## 完整胸痛 DEMO
+## 完整胸痛示例
 
 ### 创建病例并运行到医生审核中断
 
 ```powershell
 $body = @{
-  patient_id = "DEMO-P-CARDIO"
+  patient_id = "PT-CARDIO"
   question = "患者活动后胸痛两天，有高血压史，请给出辅助判断；如出现压榨性胸痛伴大汗请优先标记风险。"
 } | ConvertTo-Json
 
@@ -170,7 +170,7 @@ $created
 
 ```powershell
 $review = @{
-  reviewer_id = "DEMO-D-001"
+  reviewer_id = "DR-001"
   action = "approve"
 } | ConvertTo-Json
 
@@ -187,7 +187,7 @@ Invoke-RestMethod `
 
 ```json
 {
-  "reviewer_id": "DEMO-D-001",
+  "reviewer_id": "DR-001",
   "action": "reject",
   "reason": "当前信息不足，请补充查体和复查结果"
 }
@@ -222,7 +222,7 @@ python -m pytest -q -k "not real_llm_structured_call"
 python -m pytest tests/test_llm.py::test_real_llm_structured_call -q
 ```
 
-重点测试包括：风险规则、心内科/消化科/无专科路由、SubGraph、interrupt、approve/edit/reject、MCP DEMO 查询、患者不存在、MySQL Repository、Checkpoint 历史，以及关闭首个 MySQL Checkpointer 后用新连接和同一 `thread_id` 恢复。
+重点测试包括：风险规则、心内科/消化科/无专科路由、SubGraph、interrupt、approve/edit/reject、MCP 患者查询、患者不存在、MySQL Repository、Checkpoint 历史，以及关闭首个 MySQL Checkpointer 后用新连接和同一 `thread_id` 恢复。
 
 ## RAG 后续扩展
 
