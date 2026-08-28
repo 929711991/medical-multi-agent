@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-默认地址为 `http://127.0.0.1:5173`。本地样例医生账号为 `DR-001`，密码来自后端 `LOGIN_PASSWORD` 环境变量。
+默认地址为 `http://127.0.0.1:5173`。本地样例医生账号为 `admin`，密码来自后端 `LOGIN_PASSWORD` 环境变量。
 
 ## 验证
 

@@ -4,6 +4,8 @@ from sqlalchemy import inspect, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.passwords import hash_password
+from app.core.snowflake import MIN_PLAUSIBLE_SNOWFLAKE_ID, generate_snowflake_id
 
 _engine: AsyncEngine | None = None
 _session_factory: async_sessionmaker[AsyncSession] | None = None
@@ -32,6 +34,89 @@ async def _table_columns(connection, table_name: str) -> set[str]:
     return await connection.run_sync(
         lambda sync_connection: {item["name"] for item in inspect(sync_connection).get_columns(table_name)}
     )
+
+
+async def _has_unique_column_index(connection, table_name: str, column_name: str) -> bool:
+    rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
+    return any(row["Non_unique"] == 0 and row["Column_name"] == column_name for row in rows)
+
+
+async def _has_secondary_unique_column_index(
+    connection, table_name: str, column_name: str
+) -> bool:
+    rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
+    indexes: dict[str, list[str]] = {}
+    for row in rows:
+        if row["Key_name"] != "PRIMARY" and row["Non_unique"] == 0:
+            indexes.setdefault(row["Key_name"], []).append(row["Column_name"])
+    return [column_name] in indexes.values()
+
+
+async def _primary_key_columns(connection, table_name: str) -> list[str]:
+    rows = (await connection.execute(text(f"SHOW INDEX FROM `{table_name}`"))).mappings().all()
+    primary_rows = sorted(
+        (row for row in rows if row["Key_name"] == "PRIMARY"),
+        key=lambda row: row["Seq_in_index"],
+    )
+    return [row["Column_name"] for row in primary_rows]
+
+
+async def _migrate_business_table_to_snowflake_primary(connection, table_name: str) -> None:
+    """Keep the public string ID and move the internal primary key to a Snowflake BIGINT."""
+    columns = await _table_columns(connection, table_name)
+    if "pk_id" not in columns:
+        await connection.execute(text(f"ALTER TABLE `{table_name}` ADD COLUMN pk_id BIGINT NULL"))
+
+    rows = (
+        await connection.execute(
+            text(
+                f"SELECT id FROM `{table_name}` "
+                "WHERE pk_id IS NULL OR pk_id < :snowflake_floor ORDER BY id"
+            ),
+            {"snowflake_floor": MIN_PLAUSIBLE_SNOWFLAKE_ID},
+        )
+    ).mappings().all()
+    for row in rows:
+        await connection.execute(
+            text(f"UPDATE `{table_name}` SET pk_id = :pk_id WHERE id = :business_id"),
+            {"pk_id": generate_snowflake_id(), "business_id": row["id"]},
+        )
+
+    await connection.execute(
+        text(f"ALTER TABLE `{table_name}` MODIFY COLUMN pk_id BIGINT NOT NULL")
+    )
+    if not await _has_secondary_unique_column_index(connection, table_name, "id"):
+        await connection.execute(
+            text(f"CREATE UNIQUE INDEX ux_{table_name}_business_id ON `{table_name}` (id)")
+        )
+    if await _primary_key_columns(connection, table_name) != ["pk_id"]:
+        await connection.execute(
+            text(
+                f"ALTER TABLE `{table_name}` DROP PRIMARY KEY, "
+                "ADD PRIMARY KEY (pk_id)"
+            )
+        )
+
+
+async def _migrate_numeric_table_to_snowflake_primary(connection, table_name: str) -> None:
+    """Remove AUTO_INCREMENT and replace legacy small IDs with Snowflake IDs."""
+    await connection.execute(
+        text(f"ALTER TABLE `{table_name}` MODIFY COLUMN id BIGINT NOT NULL")
+    )
+    legacy_ids = (
+        await connection.execute(
+            text(
+                f"SELECT id FROM `{table_name}` "
+                "WHERE id < :snowflake_floor ORDER BY id"
+            ),
+            {"snowflake_floor": MIN_PLAUSIBLE_SNOWFLAKE_ID},
+        )
+    ).scalars().all()
+    for legacy_id in legacy_ids:
+        await connection.execute(
+            text(f"UPDATE `{table_name}` SET id = :new_id WHERE id = :legacy_id"),
+            {"new_id": generate_snowflake_id(), "legacy_id": legacy_id},
+        )
 
 
 async def initialize_schema() -> None:
@@ -88,6 +173,25 @@ async def initialize_schema() -> None:
             await connection.execute(
                 text(f"ALTER TABLE doctors CHANGE COLUMN {legacy_doctor_name} name VARCHAR(120) NOT NULL")
             )
+            doctor_columns = await _table_columns(connection, "doctors")
+        if "account" not in doctor_columns:
+            await connection.execute(text("ALTER TABLE doctors ADD COLUMN account VARCHAR(64) NULL"))
+        if "password_hash" not in doctor_columns:
+            await connection.execute(text("ALTER TABLE doctors ADD COLUMN password_hash VARCHAR(255) NULL"))
+        if not await _has_unique_column_index(connection, "doctors", "account"):
+            await connection.execute(text("CREATE UNIQUE INDEX ux_doctors_account ON doctors (account)"))
+        settings = get_settings()
+        await connection.execute(
+            text(
+                "UPDATE doctors SET account = :account, password_hash = :password_hash "
+                "WHERE id = :doctor_id AND (account IS NULL OR account = '' OR password_hash IS NULL)"
+            ),
+            {
+                "account": settings.login_account,
+                "password_hash": hash_password(settings.login_password),
+                "doctor_id": settings.login_doctor_id,
+            },
+        )
         await connection.execute(
             text(
                 "UPDATE doctors SET name = TRIM(SUBSTRING(name, :prefix_length)) "
@@ -104,6 +208,18 @@ async def initialize_schema() -> None:
             await connection.execute(
                 text("ALTER TABLE medical_cases ADD COLUMN source_channel VARCHAR(32) NOT NULL DEFAULT 'doctor_web'")
             )
+
+        for table_name in ("patients", "doctors", "medical_cases", "knowledge_documents"):
+            await _migrate_business_table_to_snowflake_primary(connection, table_name)
+        for table_name in (
+            "medical_visits",
+            "lab_results",
+            "imaging_reports",
+            "medications",
+            "allergies",
+            "medical_assessments",
+        ):
+            await _migrate_numeric_table_to_snowflake_primary(connection, table_name)
 
 
 async def check_mysql_ready() -> bool:

@@ -1,1 +1,1 @@
-"""为后续阶段预留的 RAG 集成入口。"""
+"""正式 RAG：文档分片与 Embedding 后写入 Redis Vector Search，并输出可追溯 Evidence。"""

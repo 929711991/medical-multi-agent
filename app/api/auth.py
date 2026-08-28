@@ -67,10 +67,13 @@ async def get_current_doctor(
 
 @router.post("/login", response_model=LoginResponse)
 async def login(payload: LoginRequest, response: Response) -> LoginResponse:
-    if not hmac.compare_digest(payload.password, get_settings().login_password):
+    settings = get_settings()
+    if not hmac.compare_digest(payload.password, settings.login_password):
         raise HTTPException(status_code=401, detail="账号或密码错误")
     async with get_session_factory()() as session:
-        raw = await DoctorRepository(session).info(payload.account)
+        if not hmac.compare_digest(payload.account, settings.login_account):
+            raise HTTPException(status_code=401, detail="invalid login credentials")
+        raw = await DoctorRepository(session).authenticate(payload.account, payload.password)
     if not raw.get("found"):
         raise HTTPException(status_code=401, detail="账号或密码错误")
     user = DoctorIdentity(
@@ -99,4 +102,3 @@ async def logout(response: Response) -> None:
 @router.get("/me", response_model=DoctorIdentity)
 async def me(doctor: DoctorIdentity = Depends(get_current_doctor)) -> DoctorIdentity:
     return doctor
-

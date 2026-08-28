@@ -43,7 +43,7 @@ onMounted(loadHealth)
             <div><span>Checkpoint</span><strong>{{ health.checkpoint }}</strong></div>
             <div><span>MCP</span><strong>{{ health.mcp }}</strong></div>
             <div><span>LLM</span><strong>{{ health.llm }}</strong></div>
-            <div><span>Milvus / RAG</span><strong>{{ health.milvus }} / {{ health.rag_ready ? 'ready' : 'down' }}</strong></div>
+            <div><span>Redis / RAG</span><strong>{{ health.redis }} / {{ health.rag_ready ? 'ready' : 'down' }}</strong></div>
             <div><span>知识文档</span><strong>{{ health.knowledge_documents }}</strong></div>
           </div>
           <div v-else class="muted">正在检查系统服务状态…</div>

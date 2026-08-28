@@ -30,9 +30,12 @@ class Settings(BaseSettings):
 
     rag_enabled: bool = True
     rag_required: bool = True
-    milvus_host: str = "127.0.0.1"
-    milvus_port: int = 19530
-    milvus_collection: str = "medical_knowledge_v1"
+    redis_host: str = "127.0.0.1"
+    redis_port: int = 6379
+    redis_password: str | None = Field(default="change_redis_me", repr=False)
+    redis_database: int = 0
+    redis_vector_index: str = "medical_knowledge_v1"
+    redis_key_prefix: str = "medical:knowledge:chunk:"
     embedding_model: str | None = None
     embedding_base_url: str | None = None
     embedding_api_key: str | None = Field(default=None, repr=False)
@@ -48,9 +51,12 @@ class Settings(BaseSettings):
     tool_call_limit: int = 20
     log_level: str = "INFO"
     auth_secret: str = Field(default="development-only-change-me", repr=False)
-    login_password: str = Field(default="clinical-local", repr=False)
+    login_account: str = "admin"
+    login_doctor_id: str = "DEMO-D-001"
+    login_password: str = Field(default="111111", repr=False)
     auth_cookie_secure: bool = False
     auth_session_hours: int = 12
+    snowflake_worker_id: int = Field(default=1, ge=0, le=1023)
 
     @property
     def database_url(self) -> str:
@@ -69,8 +75,9 @@ class Settings(BaseSettings):
         )
 
     @property
-    def milvus_uri(self) -> str:
-        return f"http://{self.milvus_host}:{self.milvus_port}"
+    def redis_url(self) -> str:
+        password = f":{quote_plus(self.redis_password)}@" if self.redis_password else ""
+        return f"redis://{password}{self.redis_host}:{self.redis_port}/{self.redis_database}"
 
     def validate_llm(self) -> None:
         if not self.aliyun_llm_api_key:

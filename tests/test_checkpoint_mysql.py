@@ -42,7 +42,7 @@ async def test_mysql_checkpoint_survives_reconnect_and_has_history() -> None:
     async with mysql_checkpointer() as second_saver:
         restarted_graph = _graph(second_saver)
         result = await restarted_graph.ainvoke(
-            Command(resume={"reviewer_id": "DR-001", "action": "approve"}),
+            Command(resume={"reviewer_id": "DEMO-D-001", "action": "approve"}),
             graph_config(thread_id),
         )
         assert result["status"] == "FINAL"

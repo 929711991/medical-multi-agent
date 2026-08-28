@@ -10,7 +10,7 @@ export interface HealthStatus {
   rag_enabled: boolean
   rag_required: boolean
   rag_ready: boolean
-  milvus: string
+  redis: string
   knowledge_documents: number
 }
 

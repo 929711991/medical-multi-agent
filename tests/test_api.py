@@ -41,7 +41,7 @@ async def test_api_create_review_and_history() -> None:
     ) as client:
         logged_in = await client.post(
             "/api/v1/auth/login",
-            json={"account": "DR-001", "password": get_settings().login_password},
+            json={"account": get_settings().login_account, "password": get_settings().login_password},
         )
         assert logged_in.status_code == 200, logged_in.text
         created = await client.post(

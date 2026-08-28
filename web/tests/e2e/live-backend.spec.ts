@@ -4,7 +4,7 @@ test.skip(process.env.LIVE_E2E !== 'true', 'requires the local MySQL, MCP and Fa
 
 test('real backend supports the doctor read workflow', async ({ page }) => {
   await page.goto('/login')
-  await page.getByPlaceholder('请输入密码').fill('clinical-local')
+  await page.getByPlaceholder('请输入密码').fill('111111')
   await page.getByRole('button', { name: '登录工作台' }).click()
   await expect(page).toHaveURL(/dashboard/)
   await expect(page.getByText('我的待审核病例')).toBeVisible()

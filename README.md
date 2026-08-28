@@ -42,12 +42,12 @@ START
 - LangGraph：掌控确定性主流程、条件边、SubGraph、Checkpoint、HITL 和恢复。
 - DeepAgents：`MedicalSupervisorAgent`、心内科 Agent、消化科 Agent 均使用真实 `create_deep_agent` 创建。
 - Structured Output：综合结果使用 `DiagnosisResult`，专科结果使用 `SpecialistOpinion`，都由 Pydantic v2 校验。
-- MCP：独立 Streamable HTTP 服务，八个工具全部只读，不提供更新、删除和开药能力。
+- MCP：独立 Streamable HTTP 服务；患者查询默认只读，并提供受控的患者创建/修改能力，禁止任意 SQL、删除患者和直接开具处方。
 - MySQL：`medical_ai` 保存业务数据；`medical_ai_graph` 专门保存 LangGraph Checkpoint 和历史状态。
 - Human-in-the-Loop：`doctor_review` 调用 `interrupt()`；审核接口使用 `Command(resume=...)` 恢复。
 - Time Travel：历史接口通过同一 `thread_id` 枚举 Checkpoint，只读展示执行过程，不覆盖正式医疗历史。
 - Middleware：智能体启用手机号/邮箱脱敏、模型调用次数限制和工具调用次数限制。
-- RAG：当前只有稳定接口，没有选择或下载 ModelScope 数据集，没有 Embedding，也没有创建 Milvus Collection。
+- RAG：正式使用 Embedding + Redis Vector Search（HNSW/COSINE）；MySQL 保存知识文档元数据，Redis 保存 Chunk、向量和检索索引。
 
 Checkpoint 表中的 `checkpoint_ns_hash` 是 Checkpointer 内部使用的 16 字节二进制摘要。三个表同时提供自动生成的只读字段 `checkpoint_ns_hash_md5`，显示为常见的 32 位 MD5 文本，便于与原始字段对照；请勿修改内部二进制字段。
 
@@ -88,6 +88,10 @@ Copy-Item .env.example .env
 ALIYUN_LLM_API_KEY=你的阿里云MaaS密钥
 MYSQL_PASSWORD=change_me
 MYSQL_ROOT_PASSWORD=change_root_me
+REDIS_PASSWORD=change_redis_me
+EMBEDDING_MODEL=你的Embedding模型
+EMBEDDING_BASE_URL=你的Embedding兼容接口地址
+EMBEDDING_API_KEY=你的Embedding密钥
 ```
 
 模型默认配置已经是：
@@ -101,14 +105,14 @@ ALIYUN_LLM_BASE_URL=https://llm-gu39ltmv26zjb2y7.cn-beijing.maas.aliyuncs.com/co
 
 ## 启动顺序
 
-### 1. 启动 MySQL
+### 1. 启动 MySQL + Redis Vector Search
 
 ```powershell
 docker compose --env-file .env -f docker/docker-compose.yml up -d
 docker compose --env-file .env -f docker/docker-compose.yml ps
 ```
 
-Compose 只启动一个 MySQL 容器，同时创建两个数据库。数据目录使用命名卷 `medical_mysql_data`，因此普通容器重建不会丢数据。不要把 `docker compose down -v` 当作日常清理命令，因为 `-v` 会删除持久化数据卷。
+Compose 启动 `medical-mysql` 和 `medical-redis` 两个核心容器。MySQL 使用 `medical_mysql_data`，Redis 使用 `medical_redis_data`，并开启 AOF 持久化；Redis 同时承载普通缓存能力和 RAG Vector Search，向量索引只匹配 `medical:knowledge:chunk:*` 前缀。不要把 `docker compose down -v` 当作日常清理命令，因为 `-v` 会删除持久化数据卷。
 
 ### 2. 初始化表并导入虚构数据
 
@@ -170,7 +174,7 @@ $created
 
 ```powershell
 $review = @{
-  reviewer_id = "DR-001"
+  reviewer_id = "DEMO-D-001"
   action = "approve"
 } | ConvertTo-Json
 
@@ -187,7 +191,7 @@ Invoke-RestMethod `
 
 ```json
 {
-  "reviewer_id": "DR-001",
+  "reviewer_id": "DEMO-D-001",
   "action": "reject",
   "reason": "当前信息不足，请补充查体和复查结果"
 }
@@ -210,7 +214,7 @@ Invoke-RestMethod "http://127.0.0.1:8000/api/v1/cases/$($created.case_id)/histor
 python -m pytest -m "not integration" -q
 ```
 
-MySQL 和 MCP 服务启动后，运行除真实 LLM 外的完整测试：
+MySQL、Redis 和 MCP 服务启动后，运行除真实 LLM 外的完整测试：
 
 ```powershell
 python -m pytest -q -k "not real_llm_structured_call"
@@ -224,8 +228,8 @@ python -m pytest tests/test_llm.py::test_real_llm_structured_call -q
 
 重点测试包括：风险规则、心内科/消化科/无专科路由、SubGraph、interrupt、approve/edit/reject、MCP 患者查询、患者不存在、MySQL Repository、Checkpoint 历史，以及关闭首个 MySQL Checkpointer 后用新连接和同一 `thread_id` 恢复。
 
-## RAG 后续扩展
+## RAG 正式实现
 
-当前 `app/rag/retriever.py` 是唯一需要替换的检索内部实现，`search_medical_knowledge`、Graph、Agent 和结构化 Evidence 接口已经稳定。进入 RAG 阶段后，再根据真实数据许可和质量决定数据源、清洗、分片、Embedding、Milvus Schema、召回和 Rerank。
+当前 RAG 使用 `app/rag/redis_store.py` 对接 Redis Vector Search，索引算法为 HNSW、距离度量为 COSINE。`scripts/rag_ingest.py` 负责文档解析、分片、Embedding、Redis 向量写入以及 MySQL `knowledge_documents` 状态登记；`search_medical_knowledge`、Graph、Agent 和结构化 Evidence 接口保持稳定。
 
-当前项目没有访问、选择或下载任何 ModelScope 医疗数据，也没有执行批量 Embedding。
+项目不会自动下载未知来源的医疗数据。正式入库前请把已确认版权、版本和来源的医学指南放入 `knowledge/source/`，然后执行 `python -m scripts.rag_ingest`；`RAG_REQUIRED=true` 时 Redis Vector、Embedding 或正式知识文档任一未就绪都会被视为不可用，而不是静默降级为伪证据。

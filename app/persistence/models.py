@@ -1,8 +1,10 @@
 from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, func
+from sqlalchemy import BigInteger, JSON, Date, DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
+
+from app.core.snowflake import generate_snowflake_id
 
 
 class Base(DeclarativeBase):
@@ -19,7 +21,10 @@ class TimestampMixin:
 class Patient(Base, TimestampMixin):
     __tablename__ = "patients"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pk_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
+    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
     birth_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     sex: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -31,7 +36,12 @@ class Patient(Base, TimestampMixin):
 class Doctor(Base, TimestampMixin):
     __tablename__ = "doctors"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pk_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
+    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    account: Mapped[str | None] = mapped_column(String(64), unique=True, nullable=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     department: Mapped[str] = mapped_column(String(120), nullable=False)
     title: Mapped[str | None] = mapped_column(String(120), nullable=True)
@@ -40,7 +50,9 @@ class Doctor(Base, TimestampMixin):
 class MedicalVisit(Base):
     __tablename__ = "medical_visits"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     visit_time: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     department: Mapped[str] = mapped_column(String(120))
@@ -51,7 +63,9 @@ class MedicalVisit(Base):
 class LabResult(Base):
     __tablename__ = "lab_results"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     test_name: Mapped[str] = mapped_column(String(160))
@@ -63,7 +77,9 @@ class LabResult(Base):
 class ImagingReport(Base):
     __tablename__ = "imaging_reports"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     observed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     modality: Mapped[str] = mapped_column(String(80))
@@ -75,7 +91,9 @@ class ImagingReport(Base):
 class Medication(Base):
     __tablename__ = "medications"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     name: Mapped[str] = mapped_column(String(160))
     dose: Mapped[str | None] = mapped_column(String(100), nullable=True)
@@ -87,7 +105,9 @@ class Medication(Base):
 class Allergy(Base):
     __tablename__ = "allergies"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     substance: Mapped[str] = mapped_column(String(160))
     reaction: Mapped[str | None] = mapped_column(String(240), nullable=True)
@@ -99,7 +119,10 @@ class MedicalCase(Base, TimestampMixin):
     __tablename__ = "medical_cases"
     __table_args__ = (Index("ix_medical_cases_thread_id", "thread_id", unique=True),)
 
-    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    pk_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
+    id: Mapped[str] = mapped_column(String(36), unique=True, nullable=False, index=True)
     patient_id: Mapped[str] = mapped_column(ForeignKey("patients.id"), index=True)
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
     question: Mapped[str] = mapped_column(Text, nullable=False)
@@ -114,7 +137,9 @@ class MedicalCase(Base, TimestampMixin):
 class MedicalAssessment(Base, TimestampMixin):
     __tablename__ = "medical_assessments"
 
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
     case_id: Mapped[str] = mapped_column(ForeignKey("medical_cases.id"), unique=True, index=True)
     ai_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     doctor_result_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
@@ -129,7 +154,10 @@ class MedicalAssessment(Base, TimestampMixin):
 class KnowledgeDocument(Base, TimestampMixin):
     __tablename__ = "knowledge_documents"
 
-    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    pk_id: Mapped[int] = mapped_column(
+        BigInteger, primary_key=True, default=generate_snowflake_id, autoincrement=False
+    )
+    id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     source: Mapped[str] = mapped_column(String(500), nullable=False)
     source_type: Mapped[str] = mapped_column(String(64), nullable=False)

@@ -6,7 +6,7 @@ import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../../stores/auth'
 import { apiErrorMessage } from '../../utils/request'
 
-const form = reactive({ account: '', password: '' })
+const form = reactive({ account: 'admin', password: '' })
 const loading = ref(false); const auth = useAuthStore(); const router = useRouter(); const route = useRoute()
 async function submit() {
   if (!form.account || !form.password) return ElMessage.warning('请输入医生账号和密码')

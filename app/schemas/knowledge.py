@@ -21,7 +21,7 @@ class KnowledgeStatusResponse(BaseModel):
     rag_enabled: bool
     rag_required: bool
     rag_ready: bool
-    milvus: str
+    redis: str
     collection: str
     embedding_model: str | None
     knowledge_documents: int = 0

@@ -13,6 +13,7 @@ from app.graph.workflow import build_diagnosis_graph
 from app.mcp.client import get_mcp_manager, reset_mcp_manager
 from app.persistence.checkpoint import mysql_checkpointer
 from app.persistence.database import close_database, initialize_schema
+from app.rag.redis_store import close as close_redis
 from app.services.health import collect_health
 
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.diagnosis_graph = build_diagnosis_graph(checkpointer=checkpointer)
         yield
     reset_mcp_manager()
+    await close_redis()
     await close_database()
 
 

@@ -35,7 +35,7 @@ onMounted(load)
     <template v-else-if="status">
       <section class="status-grid">
         <div class="surface metric"><span>RAG 状态</span><strong :class="status.rag_ready ? 'ready' : 'down'">{{ status.rag_ready ? 'READY' : 'NOT READY' }}</strong></div>
-        <div class="surface metric"><span>Milvus</span><strong>{{ status.milvus }}</strong></div>
+        <div class="surface metric"><span>Redis Vector</span><strong>{{ status.redis }}</strong></div>
         <div class="surface metric"><span>文档数量</span><strong>{{ status.knowledge_documents }}</strong></div>
         <div class="surface metric"><span>Embedding</span><strong class="small">{{ status.embedding_model || '未配置' }}</strong></div>
       </section>

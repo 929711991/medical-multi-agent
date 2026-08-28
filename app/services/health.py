@@ -10,7 +10,7 @@ from app.mcp.client import get_mcp_manager
 from app.persistence.database import check_mysql_ready, get_session_factory
 from app.persistence.repositories import KnowledgeRepository
 from app.rag.embedding import embed_query
-from app.rag.milvus import has_collection, health as milvus_health
+from app.rag.redis_store import has_index, health as redis_health
 
 
 async def _check_checkpoint() -> bool:
@@ -49,10 +49,10 @@ async def _check_rag() -> tuple[bool, bool, int]:
     settings = get_settings()
     if not settings.rag_enabled:
         return False, False, 0
-    milvus_ready = await milvus_health()
-    if not milvus_ready:
+    redis_ready = await redis_health()
+    if not redis_ready:
         return False, False, 0
-    collection_ready = await has_collection()
+    index_ready = await has_index()
     async with get_session_factory()() as session:
         document_count = await KnowledgeRepository(session).count_ready()
     embedding_ready = False
@@ -62,7 +62,7 @@ async def _check_rag() -> tuple[bool, bool, int]:
             embedding_ready = bool(vector)
         except Exception:
             embedding_ready = False
-    return bool(collection_ready and embedding_ready and document_count > 0), milvus_ready, document_count
+    return bool(index_ready and embedding_ready and document_count > 0), redis_ready, document_count
 
 
 async def collect_health() -> dict[str, Any]:
@@ -74,7 +74,7 @@ async def collect_health() -> dict[str, Any]:
         _check_llm(),
         _check_rag(),
     )
-    rag_ready, milvus_ready, document_count = rag
+    rag_ready, redis_ready, document_count = rag
     critical = [mysql_ready, checkpoint_ready, mcp_ready, llm_ready]
     if settings.rag_required:
         critical.append(rag_ready)
@@ -89,6 +89,6 @@ async def collect_health() -> dict[str, Any]:
         "rag_enabled": settings.rag_enabled,
         "rag_required": settings.rag_required,
         "rag_ready": rag_ready,
-        "milvus": "ready" if milvus_ready else "down",
+        "redis": "ready" if redis_ready else "down",
         "knowledge_documents": document_count,
     }

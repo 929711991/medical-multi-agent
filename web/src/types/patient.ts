@@ -31,11 +31,11 @@ export interface PatientSummary {
   sex: string | null
   summary: { history?: string[]; privacy?: string; sandbox?: boolean }
 }
-export interface Visit { id: number; visit_time: string; department: string; chief_complaint: string; record: Record<string, string | boolean> }
-export interface LabResult { id: number; observed_at: string; test_name: string; value: string; reference_range: string | null; abnormal_flag: string | null }
-export interface ImagingReport { id: number; observed_at: string; modality: string; body_part: string; findings: string; impression: string }
-export interface Medication { id: number; name: string; dose: string | null; route: string | null; started_at: string | null; ended_at: string | null }
-export interface Allergy { id: number; substance: string; reaction: string | null; severity: string | null; observed_at: string | null }
+export interface Visit { id: string; visit_time: string; department: string; chief_complaint: string; record: Record<string, string | boolean> }
+export interface LabResult { id: string; observed_at: string; test_name: string; value: string; reference_range: string | null; abnormal_flag: string | null }
+export interface ImagingReport { id: string; observed_at: string; modality: string; body_part: string; findings: string; impression: string }
+export interface Medication { id: string; name: string; dose: string | null; route: string | null; started_at: string | null; ended_at: string | null }
+export interface Allergy { id: string; substance: string; reaction: string | null; severity: string | null; observed_at: string | null }
 export interface PatientOverview {
   patient_id: string
   summary: PatientSummary

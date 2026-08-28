@@ -9,7 +9,7 @@ test('doctor completes the flow from patient creation to final review', async ({
   const question = '患者活动后出现胸痛并伴有出汗，有高血压病史，请进行风险筛查并给出鉴别诊断。'
 
   await page.goto('/login')
-  await page.getByPlaceholder('请输入密码').fill('clinical-local')
+  await page.getByPlaceholder('请输入密码').fill('111111')
   await page.getByRole('button', { name: '登录工作台' }).click()
   await expect(page).toHaveURL(/\/dashboard$/)
 
@@ -52,7 +52,7 @@ test('doctor completes the flow from patient creation to final review', async ({
   expect(reviewResponse.status()).toBe(200)
   const reviewed = (await reviewResponse.json()) as { status: string; reviewer_id: string | null }
   expect(reviewed.status).toBe('FINAL')
-  expect(reviewed.reviewer_id).toBe('DR-001')
+  expect(reviewed.reviewer_id).toBe('DEMO-D-001')
 
   await page.getByRole('link', { name: '诊断复盘' }).click()
   await expect(page).toHaveURL(new RegExp(`/cases/${diagnosis.case_id}/history$`))

@@ -4,6 +4,8 @@ from datetime import UTC, date, datetime, timedelta
 from sqlalchemy import select
 
 from app.persistence.database import close_database, get_session_factory, initialize_schema
+from app.core.config import get_settings
+from app.core.passwords import hash_password
 from app.persistence.models import Allergy, Doctor, ImagingReport, LabResult, MedicalVisit, Medication, Patient
 
 
@@ -22,8 +24,8 @@ async def seed() -> None:
             Patient(id="PT-LOW", display_name="低风险患者 C", birth_date=date(1994, 3, 20), sex="other", summary_json={"sandbox": True, "history": [], "privacy": "隔离环境样例数据"}, data_scope="sandbox", source_channel="seed"),
         ]
         doctors = [
-            Doctor(id="DR-001", name="李医生", department="心内科", title="主治医师"),
-            Doctor(id="DR-002", name="王医生", department="消化内科", title="副主任医师"),
+            Doctor(id="DEMO-D-001", account=get_settings().login_account, password_hash=hash_password(get_settings().login_password), name="李医生", department="心内科", title="主治医师"),
+            Doctor(id="DEMO-D-002", account="doctor2", password_hash=hash_password(get_settings().login_password), name="王医生", department="消化内科", title="副主任医师"),
         ]
         session.add_all(patients + doctors)
         await session.flush()

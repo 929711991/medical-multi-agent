@@ -2,7 +2,7 @@ from datetime import UTC, datetime
 
 from app.core.config import get_settings
 from app.rag.embedding import embed_query
-from app.rag.milvus import has_collection, search as milvus_search
+from app.rag.redis_store import has_index, search as redis_search
 from app.schemas.evidence import KnowledgeEvidence, KnowledgeSearchResult
 
 
@@ -14,13 +14,13 @@ async def search(query: str) -> KnowledgeSearchResult:
         return KnowledgeSearchResult(enabled=False, evidence=[], message="RAG 医学知识库未启用")
 
     settings.validate_rag()
-    if not await has_collection():
+    if not await has_index():
         if settings.rag_required:
-            raise RuntimeError("MILVUS_UNAVAILABLE_OR_COLLECTION_MISSING")
+            raise RuntimeError("REDIS_VECTOR_INDEX_UNAVAILABLE_OR_MISSING")
         return KnowledgeSearchResult(enabled=True, evidence=[], message="医学知识库尚未完成建库")
 
     vector = await embed_query(query)
-    hits = await milvus_search(vector, settings.rag_top_k)
+    hits = await redis_search(vector, settings.rag_top_k)
     threshold = settings.rag_score_threshold
     if threshold is not None:
         hits = [item for item in hits if item["score"] >= threshold]

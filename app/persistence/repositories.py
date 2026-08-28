@@ -6,6 +6,7 @@ from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.passwords import verify_password
 from app.persistence.models import (
     Allergy,
     Doctor,
@@ -25,10 +26,13 @@ class PatientRepository:
         self.session = session
 
     async def exists(self, patient_id: str) -> bool:
-        return await self.session.get(Patient, patient_id) is not None
+        return await self._get(patient_id) is not None
+
+    async def _get(self, patient_id: str) -> Patient | None:
+        return await self.session.scalar(select(Patient).where(Patient.id == patient_id))
 
     async def data_scope(self, patient_id: str) -> str | None:
-        patient = await self.session.get(Patient, patient_id)
+        patient = await self._get(patient_id)
         return patient.data_scope if patient else None
 
     async def create(
@@ -67,7 +71,7 @@ class PatientRepository:
         sex: str | None = None,
         history: list[str] | None = None,
     ) -> Patient | None:
-        patient = await self.session.get(Patient, patient_id)
+        patient = await self._get(patient_id)
         if patient is None:
             return None
         if name is not None:
@@ -130,7 +134,7 @@ class PatientRepository:
         return {"items": items, "page": page, "page_size": page_size, "total": total}
 
     async def summary(self, patient_id: str) -> dict[str, Any]:
-        patient = await self.session.get(Patient, patient_id)
+        patient = await self._get(patient_id)
         if patient is None:
             return {"found": False, "patient_id": patient_id, "message": "未找到患者"}
         return {
@@ -150,7 +154,7 @@ class PatientRepository:
             MedicalVisit,
             MedicalVisit.visit_time,
             lambda x: {
-                "id": x.id,
+                "id": str(x.id),
                 "visit_time": x.visit_time.isoformat(),
                 "department": x.department,
                 "chief_complaint": x.chief_complaint,
@@ -164,7 +168,7 @@ class PatientRepository:
             LabResult,
             LabResult.observed_at,
             lambda x: {
-                "id": x.id,
+                "id": str(x.id),
                 "observed_at": x.observed_at.isoformat(),
                 "test_name": x.test_name,
                 "value": x.value,
@@ -179,7 +183,7 @@ class PatientRepository:
             ImagingReport,
             ImagingReport.observed_at,
             lambda x: {
-                "id": x.id,
+                "id": str(x.id),
                 "observed_at": x.observed_at.isoformat(),
                 "modality": x.modality,
                 "body_part": x.body_part,
@@ -194,7 +198,7 @@ class PatientRepository:
             Medication,
             Medication.started_at,
             lambda x: {
-                "id": x.id,
+                "id": str(x.id),
                 "name": x.name,
                 "dose": x.dose,
                 "route": x.route,
@@ -209,7 +213,7 @@ class PatientRepository:
             Allergy,
             Allergy.observed_at,
             lambda x: {
-                "id": x.id,
+                "id": str(x.id),
                 "substance": x.substance,
                 "reaction": x.reaction,
                 "severity": x.severity,
@@ -245,12 +249,25 @@ class DoctorRepository:
         self.session = session
 
     async def info(self, doctor_id: str) -> dict[str, Any]:
-        doctor = await self.session.get(Doctor, doctor_id)
+        doctor = await self.session.scalar(select(Doctor).where(Doctor.id == doctor_id))
         if doctor is None:
             return {"found": False, "doctor_id": doctor_id, "message": "未找到医生"}
         return {
             "found": True,
             "doctor_id": doctor.id,
+            "name": doctor.name,
+            "department": doctor.department,
+            "title": doctor.title,
+        }
+
+    async def authenticate(self, account: str, password: str) -> dict[str, Any]:
+        doctor = await self.session.scalar(select(Doctor).where(Doctor.account == account))
+        if doctor is None or not verify_password(password, doctor.password_hash):
+            return {"found": False, "doctor_id": account, "message": "invalid login credentials"}
+        return {
+            "found": True,
+            "doctor_id": doctor.id,
+            "account": doctor.account,
             "name": doctor.name,
             "department": doctor.department,
             "title": doctor.title,
@@ -405,7 +422,9 @@ class KnowledgeRepository:
         self.session = session
 
     async def get(self, document_id: str) -> KnowledgeDocument | None:
-        return await self.session.get(KnowledgeDocument, document_id)
+        return await self.session.scalar(
+            select(KnowledgeDocument).where(KnowledgeDocument.id == document_id)
+        )
 
     async def count_ready(self) -> int:
         return int(

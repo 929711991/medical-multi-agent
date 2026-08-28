@@ -6,7 +6,7 @@ export interface KnowledgeStatus {
   rag_enabled: boolean
   rag_required: boolean
   rag_ready: boolean
-  milvus: string
+  redis: string
   collection: string
   embedding_model: string | null
   knowledge_documents: number

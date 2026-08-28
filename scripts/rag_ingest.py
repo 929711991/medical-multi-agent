@@ -8,7 +8,7 @@ from app.persistence.repositories import KnowledgeRepository
 from app.rag.chunker import chunk_text
 from app.rag.document_loader import load_document, supported_document
 from app.rag.embedding import embed_documents
-from app.rag.milvus import delete_document, ensure_collection, upsert
+from app.rag.redis_store import delete_document, ensure_index, upsert
 
 SOURCE_ROOT = Path(__file__).resolve().parents[1] / "knowledge" / "source"
 
@@ -55,7 +55,7 @@ async def ingest_file(path: Path) -> str:
     if not vectors or len(vectors) != len(chunks):
         raise RuntimeError(f"Embedding 返回数量异常：{source}")
 
-    await ensure_collection(len(vectors[0]))
+    await ensure_index(len(vectors[0]))
     await delete_document(document_id)
     rows = []
     for index, (chunk, vector) in enumerate(zip(chunks, vectors, strict=True)):
@@ -103,14 +103,13 @@ async def main() -> None:
         except Exception as exc:
             failures.append(f"{path.name}: {type(exc).__name__}: {exc}")
             async with get_session_factory()() as session:
-                text = load_document(path) if path.exists() else ""
                 await KnowledgeRepository(session).save_state(
                     document_id=_document_id(path),
                     title=path.stem,
                     source=path.relative_to(SOURCE_ROOT).as_posix(),
                     source_type=path.suffix.lower().lstrip("."),
                     version=None,
-                    checksum=_checksum(text),
+                    checksum=hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else "",
                     status="FAILED",
                     chunk_count=0,
                 )
