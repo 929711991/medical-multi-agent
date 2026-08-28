@@ -13,6 +13,7 @@ from app.services.consumer_auth import WeChatClient
 from app.services.health import collect_health
 from app.services.job_queue import RedisJobQueue
 from app.services.rate_limit import RateLimitExceeded, RedisRateLimiter
+from app.services.consumer_sessions import ConsumerSessionStore
 
 
 class ConsumerJSONResponse(JSONResponse):
@@ -26,6 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     queue = RedisJobQueue()
     app.state.ai_job_queue = queue
     app.state.rate_limiter = RedisRateLimiter(queue.redis)
+    app.state.consumer_session_store = ConsumerSessionStore(queue.redis)
     app.state.wechat_client = WeChatClient()
     try:
         yield
@@ -47,6 +49,8 @@ def create_consumer_app(
     )
     if queue is not None:
         app.state.ai_job_queue = queue
+        if hasattr(queue, "redis"):
+            app.state.consumer_session_store = ConsumerSessionStore(queue.redis)
     if wechat_client is not None:
         app.state.wechat_client = wechat_client
     if rate_limiter is not None:

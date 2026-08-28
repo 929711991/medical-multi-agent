@@ -14,3 +14,5 @@ htmlcov/
 /web/dist/
 /mini-program/node_modules/
 /mini-program/dist/
+/mini-program/h5/dist/
+/mini-program/test-results/

@@ -16,6 +16,7 @@ from app.persistence.database import close_database, initialize_schema
 from app.rag.redis_store import close as close_redis
 from app.services.health import collect_health
 from app.services.job_queue import InlineDiagnosisQueue, RedisJobQueue
+from app.services.consumer_sessions import DoctorSessionStore
 
 
 logger = logging.getLogger(__name__)
@@ -35,6 +36,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     get_mcp_manager()
     job_queue = RedisJobQueue()
     app.state.ai_job_queue = job_queue
+    app.state.doctor_session_store = DoctorSessionStore(job_queue.redis)
     async with mysql_checkpointer() as checkpointer:
         app.state.diagnosis_graph = build_diagnosis_graph(checkpointer=checkpointer)
         yield

@@ -10,6 +10,11 @@ class WeChatLoginRequest(BaseModel):
     avatar: str | None = Field(default=None, max_length=500)
 
 
+class H5LoginRequest(BaseModel):
+    account: str = Field(min_length=1, max_length=120)
+    password: str = Field(min_length=1, max_length=256)
+
+
 class ConsumerIdentity(BaseModel):
     user_id: str
     nickname: str | None

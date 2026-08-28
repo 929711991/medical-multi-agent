@@ -35,9 +35,21 @@ class WeChatClient:
             )
         response.raise_for_status()
         payload = response.json()
-        if payload.get("errcode") or not payload.get("openid"):
+        openid = payload.get("openid")
+        session_key = payload.get("session_key")
+        if (
+            payload.get("errcode")
+            or not isinstance(openid, str)
+            or not openid.strip()
+            or not isinstance(session_key, str)
+            or not session_key.strip()
+        ):
             raise ValueError("WECHAT_CODE_INVALID")
-        return WeChatSession(openid=payload["openid"], unionid=payload.get("unionid"))
+        unionid = payload.get("unionid")
+        return WeChatSession(
+            openid=openid,
+            unionid=unionid if isinstance(unionid, str) else None,
+        )
 
 
 def _b64encode(value: bytes) -> str:
@@ -75,7 +87,13 @@ def decode_consumer_token(token: str) -> dict[str, Any]:
         if not hmac.compare_digest(signature, expected):
             raise ValueError
         payload = json.loads(_b64decode(body))
-        if payload.get("typ") != "consumer" or int(payload.get("exp", 0)) <= int(time.time()):
+        subject = payload.get("sub")
+        if (
+            payload.get("typ") != "consumer"
+            or not isinstance(subject, str)
+            or not subject.strip()
+            or int(payload.get("exp", 0)) <= int(time.time())
+        ):
             raise ValueError
         return payload
     except Exception as exc:

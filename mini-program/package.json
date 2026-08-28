@@ -6,14 +6,20 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run --exclude h5/**",
+    "h5:dev": "vite --config h5/vite.config.ts --host 127.0.0.1 --port 5174",
+    "h5:build": "vite build --config h5/vite.config.ts",
+    "h5:typecheck": "tsc --noEmit -p h5/tsconfig.json",
+    "h5:test:e2e": "playwright test --config h5/playwright.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "^9.34.0",
+    "@playwright/test": "^1.62.1",
     "@types/node": "^24.3.0",
     "eslint": "^9.34.0",
     "typescript": "~5.9.2",
     "typescript-eslint": "^8.42.0",
+    "vite": "^7.3.6",
     "vitest": "^3.2.4"
   }
 }

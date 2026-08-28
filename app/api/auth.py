@@ -5,7 +5,8 @@ import json
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from redis.exceptions import RedisError
 
 from app.core.config import get_settings
 from app.persistence.database import get_session_factory
@@ -51,12 +52,21 @@ def _read_token(token: str | None) -> str | None:
 
 
 async def get_current_doctor(
+    request: Request,
     medical_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
 ) -> DoctorIdentity:
     """根据签名会话 Cookie 解析当前已登录医生。"""
     doctor_id = _read_token(medical_session)
     if not doctor_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
+    session_store = getattr(request.app.state, "doctor_session_store", None)
+    if session_store is not None:
+        try:
+            session_doctor_id = await session_store.get_user_id(medical_session or "")
+        except RedisError as exc:
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from exc
+        if session_doctor_id != doctor_id:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="登录已失效")
     async with get_session_factory()() as session:
         raw = await DoctorRepository(session).info(doctor_id)
     if not raw.get("found"):
@@ -70,7 +80,7 @@ async def get_current_doctor(
 
 
 @router.post("/login", response_model=LoginResponse)
-async def login(payload: LoginRequest, response: Response) -> LoginResponse:
+async def login(request: Request, payload: LoginRequest, response: Response) -> LoginResponse:
     """验证已落库的医生账号，并签发仅限 HTTP 访问的 Cookie。"""
     settings = get_settings()
     if not hmac.compare_digest(payload.password, settings.login_password):
@@ -87,9 +97,17 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
         department=raw["department"],
         title=raw.get("title"),
     )
+    token = _create_token(user.doctor_id)
+    session_store = getattr(request.app.state, "doctor_session_store", None)
+    if session_store is not None:
+        try:
+            # 医生登录成功后才写入 Redis，会话 TTL 与 Cookie 保持一致。
+            await session_store.save(token, user.doctor_id, settings.auth_session_hours * 3600)
+        except RedisError as exc:
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from exc
     response.set_cookie(
         COOKIE_NAME,
-        _create_token(user.doctor_id),
+        token,
         httponly=True,
         secure=get_settings().auth_cookie_secure,
         samesite="lax",
@@ -100,8 +118,18 @@ async def login(payload: LoginRequest, response: Response) -> LoginResponse:
 
 
 @router.post("/logout", status_code=204)
-async def logout(response: Response) -> None:
-    """清除浏览器中的身份认证 Cookie。"""
+async def logout(
+    request: Request,
+    response: Response,
+    medical_session: Annotated[str | None, Cookie(alias=COOKIE_NAME)] = None,
+) -> None:
+    """删除 Redis 会话并清除浏览器中的身份认证 Cookie。"""
+    session_store = getattr(request.app.state, "doctor_session_store", None)
+    if session_store is not None and medical_session:
+        try:
+            await session_store.revoke(medical_session)
+        except RedisError as exc:
+            raise HTTPException(status_code=503, detail="登录服务暂不可用，请稍后重试") from exc
     response.delete_cookie(COOKIE_NAME, path="/", httponly=True, samesite="lax")
 
 

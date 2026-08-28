@@ -58,6 +58,9 @@ class Settings(BaseSettings):
     auth_session_hours: int = 12
     wechat_app_id: str | None = None
     wechat_app_secret: str | None = Field(default=None, repr=False)
+    h5_consumer_login_enabled: bool = False
+    h5_consumer_account: str | None = None
+    h5_consumer_password: str | None = Field(default=None, repr=False)
     consumer_auth_secret: str | None = Field(default=None, repr=False)
     consumer_token_hours: int = Field(default=168, ge=1, le=720)
     consumer_message_max_length: int = Field(default=4000, ge=100, le=20000)
@@ -75,6 +78,15 @@ class Settings(BaseSettings):
     def validate_wechat(self) -> None:
         if not self.wechat_app_id or not self.wechat_app_secret:
             raise RuntimeError("WECHAT_CREDENTIALS_UNAVAILABLE")
+
+    def validate_h5_consumer_login(self) -> None:
+        """仅在明确开启且配置验收账号时允许 H5 登录。"""
+        if (
+            not self.h5_consumer_login_enabled
+            or not self.h5_consumer_account
+            or not self.h5_consumer_password
+        ):
+            raise RuntimeError("H5_CONSUMER_LOGIN_UNAVAILABLE")
 
     @property
     def database_url(self) -> str:
