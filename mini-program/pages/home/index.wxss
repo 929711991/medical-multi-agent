@@ -1,0 +1,1 @@
+.title { display: block; font-size: 42rpx; font-weight: 700; margin-bottom: 16rpx; }.card button { margin-top: 30rpx; }.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20rpx; }.item { display: flex; flex-direction: column; gap: 12rpx; }

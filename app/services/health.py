@@ -11,6 +11,7 @@ from app.persistence.database import check_mysql_ready, get_session_factory
 from app.persistence.repositories import KnowledgeRepository
 from app.rag.embedding import embed_query
 from app.rag.redis_store import has_index, health as redis_health
+from app.services.job_queue import RedisJobQueue
 
 
 async def _check_checkpoint() -> bool:
@@ -69,18 +70,33 @@ async def _check_rag() -> tuple[bool, bool, int]:
     return bool(index_ready and embedding_ready and document_count > 0), redis_ready, document_count
 
 
+async def _check_job_queue() -> tuple[bool, bool]:
+    queue = RedisJobQueue()
+    try:
+        await queue.ensure_group()
+        queue_ready = bool(await queue.redis.ping())
+        worker_ready = await queue.worker_ready()
+        return queue_ready, worker_ready
+    except Exception:
+        return False, False
+    finally:
+        await queue.close()
+
+
 async def collect_health() -> dict[str, Any]:
     """汇总数据库、检查点、MCP、大模型和 RAG 健康状态。"""
     settings = get_settings()
-    mysql_ready, checkpoint_ready, mcp_ready, llm_ready, rag = await asyncio.gather(
+    mysql_ready, checkpoint_ready, mcp_ready, llm_ready, rag, job = await asyncio.gather(
         check_mysql_ready(),
         _check_checkpoint(),
         _check_mcp(),
         _check_llm(),
         _check_rag(),
+        _check_job_queue(),
     )
     rag_ready, redis_ready, document_count = rag
-    critical = [mysql_ready, checkpoint_ready, mcp_ready, llm_ready]
+    queue_ready, worker_ready = job
+    critical = [mysql_ready, checkpoint_ready, mcp_ready, llm_ready, queue_ready, worker_ready]
     if settings.rag_required:
         critical.append(rag_ready)
     status = "ok" if all(critical) else "degraded" if mysql_ready else "down"
@@ -90,10 +106,16 @@ async def collect_health() -> dict[str, Any]:
         "mysql": "ready" if mysql_ready else "down",
         "checkpoint": "ready" if checkpoint_ready else "down",
         "mcp": "ready" if mcp_ready else "down",
+        "mcp_configured": bool(settings.mcp_server_url),
         "llm": "ready" if llm_ready else "down",
+        "llm_configured": bool(settings.aliyun_llm_api_key),
         "rag_enabled": settings.rag_enabled,
         "rag_required": settings.rag_required,
         "rag_ready": rag_ready,
         "redis": "ready" if redis_ready else "down",
+        "redis_vector_ready": rag_ready,
+        "embedding_configured": bool(settings.embedding_model and settings.embedding_api_key),
+        "ai_queue": "ready" if queue_ready else "down",
+        "ai_worker": "ready" if worker_ready else "down",
         "knowledge_documents": document_count,
     }

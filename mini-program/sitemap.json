@@ -1,0 +1,1 @@
+{ "desc": "Medical AI consumer mini program", "rules": [{ "action": "allow", "page": "*" }] }

@@ -39,6 +39,7 @@ class DiagnosisResult(BaseModel):
 
 class DiagnosisCreateRequest(BaseModel):
     patient_id: str = Field(min_length=1, max_length=64)
+    visit_id: str | None = Field(default=None, min_length=1, max_length=64)
     question: str = Field(min_length=3, max_length=4000)
 
 
@@ -82,11 +83,15 @@ class GraphDoctorReview(BaseModel):
 class CaseResponse(BaseModel):
     id: str
     patient_id: str
+    visit_id: str | None = None
+    consultation_id: str | None = None
     thread_id: str
     question: str
     status: str
     risk_level: RiskLevel | None = None
     source_channel: str = "doctor_web"
+    failure_stage: str | None = None
+    error_code: str | None = None
     ai_result: DiagnosisResult | None = None
     doctor_result: DiagnosisResult | None = None
     review_status: str | None = None

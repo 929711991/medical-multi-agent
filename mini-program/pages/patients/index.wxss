@@ -1,0 +1,1 @@
+.card { display: flex; flex-direction: column; gap: 16rpx; }.card button { margin-top: 18rpx; }

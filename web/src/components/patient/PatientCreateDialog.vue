@@ -1,14 +1,36 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { createPatient } from '../../api/patient'
+import { createPatient, getDepartments } from '../../api/patient'
+import type { Department } from '../../types/patient'
+import { useAuthStore } from '../../stores/auth'
 import { apiErrorMessage } from '../../utils/request'
 
 const props = defineProps<{ modelValue: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: boolean]; created: [patientId: string] }>()
 
 const saving = ref(false)
-const form = reactive({ name: '', sex: 'male', birth_date: '', history: '' })
+const departments = ref<Department[]>([])
+const departmentsLoading = ref(false)
+const departmentsError = ref('')
+const auth = useAuthStore()
+const form = reactive({ name: '', sex: 'male', birth_date: '', department_code: '', chief_complaint: '', history: '' })
+
+async function loadDepartments() {
+  departmentsLoading.value = true
+  departmentsError.value = ''
+  try {
+    departments.value = await getDepartments()
+    const current = departments.value.find((item) => item.name === auth.user?.department)
+    form.department_code ||= current?.code || departments.value[0]?.code || ''
+  } catch (error) {
+    departmentsError.value = apiErrorMessage(error, '科室列表加载失败')
+  } finally {
+    departmentsLoading.value = false
+  }
+}
+
+watch(() => props.modelValue, (open) => { if (open && !departments.value.length) void loadDepartments() })
 
 function disableFutureDate(value: Date) {
   // 日期选择器只允许今天及以前的出生日期。
@@ -28,6 +50,8 @@ async function submit() {
     ElMessage.warning('请输入患者姓名')
     return
   }
+  if (!form.department_code) return ElMessage.warning('请选择本次接诊科室')
+  if (!form.chief_complaint.trim()) return ElMessage.warning('请填写主要主诉')
   saving.value = true
   try {
     const result = await createPatient({
@@ -38,6 +62,8 @@ async function submit() {
         .split(/\n|；|;/)
         .map((item) => item.trim())
         .filter(Boolean),
+      department_code: form.department_code,
+      chief_complaint: form.chief_complaint.trim(),
     })
     ElMessage.success('患者创建成功')
     close()
@@ -45,6 +71,7 @@ async function submit() {
     form.name = ''
     form.birth_date = ''
     form.history = ''
+    form.chief_complaint = ''
   } catch (error) {
     ElMessage.error(apiErrorMessage(error, '患者创建失败'))
   } finally {
@@ -79,7 +106,18 @@ async function submit() {
           />
         </el-form-item>
       </div>
-      <el-form-item label="主要病史">
+      <el-form-item label="本次接诊科室" required>
+        <el-select v-model="form.department_code" :loading="departmentsLoading" style="width: 100%" placeholder="请选择接诊科室">
+          <el-option v-for="item in departments" :key="item.code" :label="item.name" :value="item.code" />
+        </el-select>
+        <el-alert v-if="departmentsError" :title="departmentsError" type="error" :closable="false">
+          <el-button link type="primary" @click="loadDepartments">重试</el-button>
+        </el-alert>
+      </el-form-item>
+      <el-form-item label="主要主诉" required>
+        <el-input v-model="form.chief_complaint" type="textarea" :rows="3" maxlength="4000" show-word-limit placeholder="请描述本次就诊最主要的不适和持续时间" />
+      </el-form-item>
+      <el-form-item label="既往病史">
         <el-input v-model="form.history" type="textarea" :rows="4" placeholder="每行一条，例如：高血压病史5年" />
       </el-form-item>
     </el-form>

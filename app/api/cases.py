@@ -10,6 +10,7 @@ from app.graph.history import get_history
 from app.persistence.database import get_session_factory
 from app.persistence.repositories import CaseRepository
 from app.schemas.diagnosis import CaseResponse, DiagnosisResult, HistoryResponse
+from app.schemas.auth import DoctorIdentity
 
 router = APIRouter(tags=["cases"], dependencies=[Depends(get_current_doctor)])
 
@@ -37,6 +38,7 @@ async def list_cases(
     status: str | None = None,
     risk_level: str | None = None,
     search: str | None = Query(None, max_length=120),
+    doctor: DoctorIdentity = Depends(get_current_doctor),
 ) -> dict:
     """返回当前工作区筛选后的诊断病例。"""
     async with get_session_factory()() as session:
@@ -46,34 +48,42 @@ async def list_cases(
             status=status,
             risk_level=risk_level,
             search=search,
+            doctor_department=doctor.department,
         )
 
 
 @router.get("/cases/pending-review")
 async def pending_reviews(
-    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)
+    page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+    doctor: DoctorIdentity = Depends(get_current_doctor),
 ) -> dict:
     """按照风险优先级返回等待医生审核的病例。"""
     async with get_session_factory()() as session:
-        return await CaseRepository(session).list(page=page, page_size=page_size, pending_only=True)
+        return await CaseRepository(session).list(page=page, page_size=page_size, pending_only=True, doctor_department=doctor.department)
 
 
 @router.get("/cases/{case_id}", response_model=CaseResponse)
-async def get_case(case_id: str) -> CaseResponse:
+async def get_case(case_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> CaseResponse:
     """返回病例及其最新 AI 评估和医生审核状态。"""
     async with get_session_factory()() as session:
         case = await CaseRepository(session).get(case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="未找到病例")
+        if not await CaseRepository(session).can_doctor_access(case_id, doctor.department):
+            raise HTTPException(status_code=403, detail="无权访问该病例")
         assessment = case.assessments[0] if case.assessments else None
         return CaseResponse(
             id=str(case.id),
             patient_id=str(case.patient_id),
+            visit_id=str(case.visit_id) if case.visit_id is not None else None,
+            consultation_id=str(case.consultation_id) if case.consultation_id is not None else None,
             thread_id=case.thread_id,
             question=case.question,
             status=case.status,
             risk_level=case.risk_level,
             source_channel=case.source_channel,
+            failure_stage=case.failure_stage,
+            error_code=case.error_code,
             ai_result=DiagnosisResult.model_validate(assessment.ai_result_json)
             if assessment and assessment.ai_result_json
             else None,

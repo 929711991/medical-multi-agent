@@ -489,6 +489,29 @@ async def initialize_schema() -> None:
     async with get_engine().begin() as connection:
         await connection.run_sync(Base.metadata.create_all)
 
+        departments = (
+            ("GENERAL", "全科", 10),
+            ("CARDIOLOGY", "心内科", 20),
+            ("GASTROENTEROLOGY", "消化内科", 30),
+            ("NEUROLOGY", "神经内科", 40),
+            ("RESPIRATORY", "呼吸内科", 50),
+            ("ENDOCRINOLOGY", "内分泌科", 60),
+        )
+        for code, name, sort_order in departments:
+            await connection.execute(
+                text(
+                    "INSERT INTO departments (pk_id, code, name, enabled, sort_order) "
+                    "VALUES (:pk_id, :code, :name, 1, :sort_order) "
+                    "ON DUPLICATE KEY UPDATE name = VALUES(name), sort_order = VALUES(sort_order)"
+                ),
+                {
+                    "pk_id": generate_snowflake_id(),
+                    "code": code,
+                    "name": name,
+                    "sort_order": sort_order,
+                },
+            )
+
         assessment_columns = await _table_columns(connection, "medical_assessments")
         if "version" not in assessment_columns:
             await connection.execute(
@@ -555,6 +578,28 @@ async def initialize_schema() -> None:
         if "source_channel" not in case_columns:
             await connection.execute(
                 text("ALTER TABLE medical_cases ADD COLUMN source_channel VARCHAR(32) NOT NULL DEFAULT 'doctor_web'")
+            )
+        if "visit_id" not in case_columns:
+            await connection.execute(
+                text("ALTER TABLE medical_cases ADD COLUMN visit_id BIGINT NULL")
+            )
+        if "consultation_id" not in case_columns:
+            await connection.execute(
+                text("ALTER TABLE medical_cases ADD COLUMN consultation_id BIGINT NULL")
+            )
+        if "failure_stage" not in case_columns:
+            await connection.execute(
+                text("ALTER TABLE medical_cases ADD COLUMN failure_stage VARCHAR(64) NULL")
+            )
+        if "error_code" not in case_columns:
+            await connection.execute(
+                text("ALTER TABLE medical_cases ADD COLUMN error_code VARCHAR(64) NULL")
+            )
+
+        visit_columns = await _table_columns(connection, "medical_visits")
+        if "department_code" not in visit_columns:
+            await connection.execute(
+                text("ALTER TABLE medical_visits ADD COLUMN department_code VARCHAR(64) NULL")
             )
 
         await _migrate_all_identifier_columns_to_bigint(connection)

@@ -20,6 +20,7 @@ class DiagnosisState(TypedDict, total=False):
     specialist_result: dict[str, Any]
     doctor_review: dict[str, Any]
     final_assessment: dict[str, Any] | None
+    consumer_advice: dict[str, Any]
     status: str
     errors: list[str]
     messages: Annotated[list[Any], add_messages]

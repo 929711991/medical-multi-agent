@@ -9,6 +9,8 @@ class PatientCreateRequest(BaseModel):
     birth_date: date | None = None
     sex: Literal["male", "female", "other"]
     history: list[str] = Field(default_factory=list, max_length=20)
+    department_code: str = Field(min_length=2, max_length=64)
+    chief_complaint: str = Field(min_length=2, max_length=4000)
 
     @field_validator("name")
     @classmethod
@@ -27,6 +29,19 @@ class PatientCreateRequest(BaseModel):
             raise ValueError("出生日期不能晚于今天，请重新选择")
         return value
 
+    @field_validator("department_code")
+    @classmethod
+    def normalize_department_code(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("chief_complaint")
+    @classmethod
+    def normalize_chief_complaint(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("主要主诉不能为空")
+        return value
+
 
 class PatientUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -43,6 +58,39 @@ class PatientCreateResponse(BaseModel):
     history: list[str]
     data_scope: str
     source_channel: str
+    visit_id: str
+    department_code: str
+    department: str
+    chief_complaint: str
+
+
+class VisitCreateRequest(BaseModel):
+    department_code: str = Field(min_length=2, max_length=64)
+    chief_complaint: str = Field(min_length=2, max_length=4000)
+    record: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("department_code")
+    @classmethod
+    def normalize_visit_department(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @field_validator("chief_complaint")
+    @classmethod
+    def normalize_visit_complaint(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("主要主诉不能为空")
+        return value
+
+
+class VisitResponse(BaseModel):
+    id: str
+    patient_id: str
+    visit_time: datetime
+    department_code: str | None
+    department: str
+    chief_complaint: str
+    record: dict[str, Any]
 
 
 class PatientSummary(BaseModel):

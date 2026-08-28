@@ -1,0 +1,1 @@
+.hero { padding: 100rpx 20rpx 50rpx; display: flex; flex-direction: column; align-items: center; gap: 18rpx; }.mark { width: 110rpx; height: 110rpx; border-radius: 32rpx; background: #176b5b; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; }.title { font-size: 48rpx; font-weight: 700; }.card button { margin-top: 28rpx; }

@@ -8,6 +8,7 @@ from app.api.dependencies import get_graph
 from app.graph.workflow import graph_config
 from app.persistence.database import get_session_factory
 from app.persistence.repositories import CaseRepository
+from app.persistence.consumer_repositories import ConsultationRepository
 from app.schemas.auth import DoctorIdentity
 from app.schemas.diagnosis import CaseResponse, DiagnosisResult, DoctorReviewRequest
 
@@ -28,6 +29,8 @@ async def review_case(
         case = await repository.get(case_id)
         if case is None:
             raise HTTPException(status_code=404, detail="未找到病例")
+        if not await repository.can_doctor_access(case_id, doctor.department):
+            raise HTTPException(status_code=403, detail="无权审核该病例")
         if case.status != "WAITING_REVIEW":
             raise HTTPException(status_code=409, detail=f"病例在 {case.status} 状态下不能审核")
         if not await repository.claim_review(case_id, payload.expected_version):
@@ -53,6 +56,25 @@ async def review_case(
                 result=final.model_dump(mode="json") if final else None,
                 reason=persisted_reason,
             )
+            if case.consultation_id is not None:
+                consumer_repository = ConsultationRepository(session)
+                await consumer_repository.add_message(
+                    consultation_id=str(case.consultation_id),
+                    client_message_id=f"doctor-review:{case.id}",
+                    sender_type="DOCTOR",
+                    sender_id=doctor.doctor_id,
+                    content=(
+                        final.clinical_summary
+                        if final is not None
+                        else "医生已审核本次咨询，未形成可发布的健康建议。"
+                    ),
+                    metadata={
+                        "case_id": str(case.id),
+                        "review_action": persisted_action,
+                        "doctor_final": True,
+                    },
+                )
+                await consumer_repository.set_status(str(case.consultation_id), "CLOSED")
         except Exception as exc:
             logger.exception(
                 "审核恢复执行失败",
@@ -65,10 +87,17 @@ async def review_case(
         return CaseResponse(
             id=str(refreshed.id),
             patient_id=str(refreshed.patient_id),
+            visit_id=str(refreshed.visit_id) if refreshed.visit_id is not None else None,
+            consultation_id=(
+                str(refreshed.consultation_id) if refreshed.consultation_id is not None else None
+            ),
             thread_id=refreshed.thread_id,
             question=refreshed.question,
             status=refreshed.status,
             risk_level=refreshed.risk_level,
+            source_channel=refreshed.source_channel,
+            failure_stage=refreshed.failure_stage,
+            error_code=refreshed.error_code,
             ai_result=DiagnosisResult.model_validate(assessment.ai_result_json) if assessment.ai_result_json else None,
             doctor_result=DiagnosisResult.model_validate(assessment.doctor_result_json)
             if assessment.doctor_result_json

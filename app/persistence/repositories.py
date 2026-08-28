@@ -10,6 +10,7 @@ from app.core.identifiers import identifier_to_bigint
 from app.core.snowflake import generate_snowflake_id
 from app.persistence.models import (
     Allergy,
+    Department,
     Doctor,
     ImagingReport,
     LabResult,
@@ -32,6 +33,31 @@ def _identifier_text(requested: str | int | None, actual: int | None) -> str | N
     if requested is not None and not str(requested).strip().lstrip("-").isdigit():
         return str(requested)
     return None if actual is None else str(actual)
+
+
+class DepartmentRepository:
+    def __init__(self, session: AsyncSession):
+        self.session = session
+
+    async def list_enabled(self) -> list[Department]:
+        """返回稳定排序的启用科室字典。"""
+        return list(
+            (
+                await self.session.scalars(
+                    select(Department)
+                    .where(Department.enabled.is_(True))
+                    .order_by(Department.sort_order, Department.code)
+                )
+            ).all()
+        )
+
+    async def get_enabled(self, code: str) -> Department | None:
+        """按稳定编码解析可接诊科室。"""
+        return await self.session.scalar(
+            select(Department).where(
+                Department.code == code.strip().upper(), Department.enabled.is_(True)
+            )
+        )
 
 
 class PatientRepository:
@@ -64,6 +90,7 @@ class PatientRepository:
         history: list[str],
         data_scope: str = "sandbox",
         source_channel: str = "doctor_web",
+        commit: bool = True,
     ) -> Patient:
         """创建沙箱患者，并分配低碰撞概率的业务编号。"""
         patient = Patient(
@@ -79,9 +106,55 @@ class PatientRepository:
             source_channel=source_channel,
         )
         self.session.add(patient)
-        await self.session.commit()
-        await self.session.refresh(patient)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(patient)
+        else:
+            await self.session.flush()
         return patient
+
+    async def create_visit(
+        self,
+        *,
+        patient_id: str | int,
+        department_code: str,
+        department: str,
+        chief_complaint: str,
+        record: dict[str, Any] | None = None,
+        commit: bool = True,
+    ) -> MedicalVisit:
+        """为已有患者创建一次明确接诊；可加入调用方控制的外部事务。"""
+        database_patient_id = _identifier_value(patient_id, "patient")
+        if database_patient_id is None:
+            raise ValueError("患者编号必须能转换为整数")
+        visit = MedicalVisit(
+            patient_id=database_patient_id,
+            visit_time=datetime.now(UTC),
+            department_code=department_code,
+            department=department,
+            chief_complaint=chief_complaint.strip(),
+            record_json=record or {},
+        )
+        self.session.add(visit)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(visit)
+        else:
+            await self.session.flush()
+        return visit
+
+    async def get_visit(self, patient_id: str, visit_id: str) -> MedicalVisit | None:
+        """读取属于指定患者的一次接诊，防止跨患者关联病例。"""
+        database_patient_id = _identifier_value(patient_id, "patient")
+        database_visit_id = _identifier_value(visit_id, "visit")
+        if database_patient_id is None or database_visit_id is None:
+            return None
+        return await self.session.scalar(
+            select(MedicalVisit).where(
+                MedicalVisit.id == database_visit_id,
+                MedicalVisit.patient_id == database_patient_id,
+            )
+        )
 
     async def update_patient(
         self,
@@ -111,10 +184,24 @@ class PatientRepository:
         return patient
 
     async def list(
-        self, *, page: int = 1, page_size: int = 20, search: str | None = None, sex: str | None = None
+        self, *, page: int = 1, page_size: int = 20, search: str | None = None, sex: str | None = None,
+        doctor_department: str | None = None,
     ) -> dict[str, Any]:
         """返回经过筛选和分页的患者工作列表。"""
-        filters = [Patient.data_scope == "sandbox"]
+        access_filter = Patient.data_scope == "sandbox"
+        if doctor_department:
+            escalated = (
+                select(MedicalCase.id)
+                .join(MedicalVisit, MedicalVisit.id == MedicalCase.visit_id)
+                .where(
+                    MedicalCase.patient_id == Patient.id,
+                    MedicalCase.source_channel == "wechat_mini_program",
+                    MedicalVisit.department == doctor_department,
+                )
+                .exists()
+            )
+            access_filter = or_(access_filter, escalated)
+        filters = [access_filter]
         if search:
             term = f"%{search.strip()}%"
             filters.append(or_(Patient.id.like(term), Patient.display_name.like(term)))
@@ -182,6 +269,7 @@ class PatientRepository:
                 "id": str(x.id),
                 "visit_time": x.visit_time.isoformat(),
                 "department": x.department,
+                "department_code": x.department_code,
                 "chief_complaint": x.chief_complaint,
                 "record": x.record_json,
             },
@@ -329,6 +417,10 @@ class CaseRepository:
         thread_id: str,
         question: str,
         source_channel: str = "doctor_web",
+        visit_id: str | None = None,
+        consultation_id: str | None = None,
+        status: str = "CREATED",
+        commit: bool = True,
     ) -> MedicalCase:
         """在同一事务中创建病例及其初始待审核评估。"""
         database_case_id = _identifier_value(case_id, "case")
@@ -341,11 +433,21 @@ class CaseRepository:
             thread_id=thread_id,
             question=question,
             source_channel=source_channel,
+            visit_id=_identifier_value(visit_id, "visit") if visit_id is not None else None,
+            consultation_id=(
+                _identifier_value(consultation_id, "consultation")
+                if consultation_id is not None
+                else None
+            ),
+            status=status,
         )
         case.assessments.append(MedicalAssessment(review_status="PENDING"))
         self.session.add(case)
-        await self.session.commit()
-        await self.session.refresh(case)
+        if commit:
+            await self.session.commit()
+            await self.session.refresh(case)
+        else:
+            await self.session.flush()
         return case
 
     async def get(self, case_id: str) -> MedicalCase | None:
@@ -365,9 +467,22 @@ class CaseRepository:
         risk_level: str | None = None,
         search: str | None = None,
         pending_only: bool = False,
+        doctor_department: str | None = None,
     ) -> dict[str, Any]:
         """返回带患者展示信息的病例列表或审核队列分页。"""
         filters = []
+        if doctor_department:
+            matching_visit = (
+                select(MedicalVisit.id)
+                .where(
+                    MedicalVisit.id == MedicalCase.visit_id,
+                    MedicalVisit.department == doctor_department,
+                )
+                .exists()
+            )
+            filters.append(
+                or_(MedicalCase.source_channel != "wechat_mini_program", matching_visit)
+            )
         if pending_only:
             filters.append(MedicalCase.status == "WAITING_REVIEW")
         elif status:
@@ -415,6 +530,17 @@ class CaseRepository:
             })
         return {"items": items, "page": page, "page_size": page_size, "total": total}
 
+    async def can_doctor_access(self, case_id: str, department: str) -> bool:
+        case = await self.get(case_id)
+        if case is None:
+            return False
+        if case.source_channel != "wechat_mini_program":
+            return True
+        if case.visit_id is None:
+            return False
+        visit = await self.session.get(MedicalVisit, case.visit_id)
+        return bool(visit and visit.department == department)
+
     async def set_draft(self, case_id: str, result: dict[str, Any], risk_level: str) -> None:
         """保存 AI 草稿，并将病例移入医生审核队列。"""
         case = await self.get(case_id)
@@ -449,6 +575,29 @@ class CaseRepository:
         if case is None:
             raise LookupError("未找到病例")
         case.status = status
+        await self.session.commit()
+
+    async def claim_ai_run(self, case_id: str) -> bool:
+        """以原子状态迁移领取 AI 任务，重复 Worker 不会再次执行完整诊断图。"""
+        identifier = _identifier_value(case_id, "case")
+        if identifier is None:
+            return False
+        result = await self.session.execute(
+            update(MedicalCase)
+            .where(MedicalCase.id == identifier, MedicalCase.status == "QUEUED")
+            .values(status="RUNNING", failure_stage=None, error_code=None)
+        )
+        await self.session.commit()
+        return result.rowcount == 1
+
+    async def set_failed(self, case_id: str, *, stage: str, error_code: str) -> None:
+        """持久化可定位的 AI 任务失败状态，避免病例永久停留在 RUNNING。"""
+        case = await self.get(case_id)
+        if case is None:
+            raise LookupError("未找到病例")
+        case.status = "FAILED"
+        case.failure_stage = stage
+        case.error_code = error_code
         await self.session.commit()
 
     async def save_review(

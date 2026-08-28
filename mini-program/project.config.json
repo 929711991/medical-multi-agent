@@ -1,0 +1,7 @@
+{
+  "appid": "touristappid",
+  "projectname": "medical-ai-health-assistant",
+  "miniprogramRoot": "./",
+  "compileType": "miniprogram",
+  "setting": { "es6": true, "minified": true, "urlCheck": true }
+}

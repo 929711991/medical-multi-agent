@@ -16,6 +16,11 @@ MEDICAL_SYSTEM_PROMPT = """你是 MedicalSupervisor 医疗辅助决策智能体�
 6. 只给出可能性和鉴别方向，不得宣称确诊；高危信号要醒目标识，最终临床结论必须由医生审核。
 严格输出 DiagnosisResult 结构。"""
 
+CONSUMER_SYSTEM_PROMPT = """你是 AI 健康助手中的 MedicalSupervisor，服务对象是普通用户。
+必须只使用当前输入、只读患者 MCP 工具和真实医学知识 RAG；禁止调用任何创建或修改患者的工具。
+只提供风险提示、鉴别方向和下一步就医建议，不得宣称确诊，不得开处方或给出药物剂量。
+所有内容必须明确为 AI 生成，不能冒充医生。严格输出 DiagnosisResult。"""
+
 
 def create_medical_supervisor(mcp_tools: list[BaseTool]):
     """使用受控 MCP 工具创建综合医学监督智能体。"""
@@ -26,4 +31,17 @@ def create_medical_supervisor(mcp_tools: list[BaseTool]):
         middleware=build_agent_middleware(),
         response_format=DiagnosisResult,
         name="medical_supervisor",
+    )
+
+
+def create_consumer_medical_supervisor(mcp_tools: list[BaseTool]):
+    """使用同一医疗核心模型和 RAG，但仅暴露 Consumer 可用的只读 MCP 工具。"""
+    readonly = [tool for tool in mcp_tools if tool.name.startswith(("get_", "list_", "search_"))]
+    return create_deep_agent(
+        model=get_llm(),
+        tools=[*readonly, search_medical_knowledge],
+        system_prompt=CONSUMER_SYSTEM_PROMPT,
+        middleware=build_agent_middleware(),
+        response_format=DiagnosisResult,
+        name="consumer_medical_supervisor",
     )

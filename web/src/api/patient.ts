@@ -1,5 +1,5 @@
 import { request } from '../utils/request'
-import type { Allergy, ImagingReport, LabResult, Medication, Patient, PatientCreatePayload, PatientCreated, PatientOverview, PatientSummary, Visit } from '../types/patient'
+import type { Allergy, Department, ImagingReport, LabResult, Medication, Patient, PatientCreatePayload, PatientCreated, PatientOverview, PatientSummary, Visit } from '../types/patient'
 import type { PageResult } from '../types/case'
 
 export async function getPatients(params: { page: number; page_size: number; search?: string; sex?: string }): Promise<PageResult<Patient>> {
@@ -16,6 +16,12 @@ export async function getPatient(id: string): Promise<PatientSummary> { return (
 export async function getPatientOverview(id: string): Promise<PatientOverview> { return (await request.get<PatientOverview>(`/patients/${id}/overview`)).data }
 /** 读取患者历史就诊记录。 */
 export async function getVisits(id: string): Promise<Visit[]> { return (await request.get<{ items: Visit[] }>(`/patients/${id}/visits`)).data.items }
+/** 读取可接诊科室字典。 */
+export async function getDepartments(): Promise<Department[]> { return (await request.get<Department[]>('/departments')).data }
+/** 为已有患者创建新接诊。 */
+export async function createVisit(id: string, payload: { department_code: string; chief_complaint: string; record?: Record<string, string | boolean> }): Promise<Visit> {
+  return (await request.post<Visit>(`/patients/${id}/visits`, payload)).data
+}
 /** 读取患者检验结果。 */
 export async function getLabs(id: string): Promise<LabResult[]> { return (await request.get<{ items: LabResult[] }>(`/patients/${id}/labs`)).data.items }
 /** 读取患者影像报告。 */

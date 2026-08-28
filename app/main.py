@@ -6,7 +6,7 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from app.api import auth, cases, dashboard, diagnosis, knowledge, patients, review
+from app.api import auth, cases, dashboard, departments, diagnosis, knowledge, patients, review
 from app.core.config import get_settings
 from app.core.logging import configure_logging
 from app.graph.workflow import build_diagnosis_graph
@@ -15,6 +15,7 @@ from app.persistence.checkpoint import mysql_checkpointer
 from app.persistence.database import close_database, initialize_schema
 from app.rag.redis_store import close as close_redis
 from app.services.health import collect_health
+from app.services.job_queue import InlineDiagnosisQueue, RedisJobQueue
 
 
 logger = logging.getLogger(__name__)
@@ -32,9 +33,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     configure_logging()
     await initialize_schema()
     get_mcp_manager()
+    job_queue = RedisJobQueue()
+    app.state.ai_job_queue = job_queue
     async with mysql_checkpointer() as checkpointer:
         app.state.diagnosis_graph = build_diagnosis_graph(checkpointer=checkpointer)
         yield
+    await job_queue.close()
     reset_mcp_manager()
     await close_redis()
     await close_database()
@@ -52,11 +56,13 @@ def create_app(*, graph: Any | None = None) -> FastAPI:
     )
     if graph is not None:
         app.state.diagnosis_graph = graph
+        app.state.ai_job_queue = InlineDiagnosisQueue(graph)
     app.include_router(diagnosis.router, prefix=get_settings().api_prefix)
     app.include_router(cases.router, prefix=get_settings().api_prefix)
     app.include_router(review.router, prefix=get_settings().api_prefix)
     app.include_router(auth.router, prefix=get_settings().api_prefix)
     app.include_router(patients.router, prefix=get_settings().api_prefix)
+    app.include_router(departments.router, prefix=get_settings().api_prefix)
     app.include_router(dashboard.router, prefix=get_settings().api_prefix)
     app.include_router(knowledge.router, prefix=get_settings().api_prefix)
 

@@ -12,6 +12,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -117,6 +118,25 @@ class Doctor(AutoIdMixin, Base, TimestampMixin):
     title: Mapped[str | None] = mapped_column(String(120), nullable=True, comment="医生职称")
 
 
+class Department(Base, TimestampMixin):
+    __tablename__ = "departments"
+    __table_args__ = {"comment": "接诊科室字典表"}
+
+    pk_id: Mapped[int] = mapped_column(
+        BigInteger,
+        primary_key=True,
+        default=generate_snowflake_id,
+        autoincrement=False,
+        comment="雪花算法内部主键",
+    )
+    code: Mapped[str] = mapped_column(
+        String(64), unique=True, nullable=False, index=True, comment="稳定科室编码"
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False, comment="科室名称")
+    enabled: Mapped[bool] = mapped_column(default=True, nullable=False, comment="是否启用")
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False, comment="显示顺序")
+
+
 class MedicalVisit(AutoIdMixin, Base):
     __tablename__ = "medical_visits"
     __table_args__ = {"comment": "患者就诊记录表"}
@@ -135,6 +155,9 @@ class MedicalVisit(AutoIdMixin, Base):
         DateTime(timezone=True), index=True, comment="就诊时间"
     )
     department: Mapped[str] = mapped_column(String(120), comment="接诊科室")
+    department_code: Mapped[str | None] = mapped_column(
+        String(64), ForeignKey("departments.code"), nullable=True, index=True, comment="接诊科室稳定编码"
+    )
     chief_complaint: Mapped[str] = mapped_column(Text, comment="患者主诉")
     record_json: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict, comment="结构化病历内容")
 
@@ -265,6 +288,12 @@ class MedicalCase(AutoIdMixin, Base, TimestampMixin):
     patient_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("patients.id"), index=True, comment="患者编号"
     )
+    visit_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("medical_visits.id"), nullable=True, index=True, comment="本次接诊编号"
+    )
+    consultation_id: Mapped[int | None] = mapped_column(
+        BigInteger, nullable=True, index=True, comment="Consumer 咨询编号"
+    )
     thread_id: Mapped[str] = mapped_column(String(64), nullable=False, comment="诊断图线程编号")
     question: Mapped[str] = mapped_column(Text, nullable=False, comment="医生提交的临床问题")
     status: Mapped[str] = mapped_column(
@@ -279,6 +308,12 @@ class MedicalCase(AutoIdMixin, Base, TimestampMixin):
         default="doctor_web",
         index=True,
         comment="病例创建渠道",
+    )
+    failure_stage: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="失败阶段"
+    )
+    error_code: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="机器可定位错误码"
     )
     assessments: Mapped[list["MedicalAssessment"]] = relationship(
         back_populates="case", cascade="all, delete-orphan"
@@ -356,3 +391,140 @@ class KnowledgeDocument(AutoIdMixin, Base, TimestampMixin):
     chunk_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, comment="已切分知识块数量"
     )
+
+
+class ConsumerUser(Base, TimestampMixin):
+    __tablename__ = "consumer_users"
+    __table_args__ = {"comment": "微信消费者账号表"}
+
+    pk_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, nullable=False, index=True, default=generate_snowflake_id
+    )
+    openid: Mapped[str] = mapped_column(String(128), unique=True, nullable=False, index=True)
+    unionid: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    nickname: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    avatar: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+
+
+class ConsumerPatientRelation(Base, TimestampMixin):
+    __tablename__ = "consumer_patient_relations"
+    __table_args__ = (
+        UniqueConstraint("consumer_user_id", "patient_id", name="ux_consumer_patient_relation"),
+        {"comment": "消费者与共享患者主档的授权关系"},
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    consumer_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=False, index=True
+    )
+    patient_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("patients.id"), nullable=False, index=True
+    )
+    relation_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    permission: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+    invited_by: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=True
+    )
+
+
+class Consultation(Base, TimestampMixin):
+    __tablename__ = "consultations"
+    __table_args__ = (Index("ix_consultations_thread_id", "thread_id", unique=True),)
+
+    pk_id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    id: Mapped[int] = mapped_column(
+        BigInteger, unique=True, nullable=False, index=True, default=generate_snowflake_id
+    )
+    consumer_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=False, index=True
+    )
+    patient_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("patients.id"), nullable=False, index=True
+    )
+    thread_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    consultation_type: Mapped[str] = mapped_column(String(32), nullable=False, default="health_advice")
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED", index=True)
+    risk_level: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    recommended_department_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    linked_case_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("medical_cases.id"), nullable=True, index=True
+    )
+    failure_stage: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    error_code: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    source_channel: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="wechat_mini_program"
+    )
+
+
+class ConsultationMessage(Base):
+    __tablename__ = "consultation_messages"
+    __table_args__ = (
+        UniqueConstraint("consultation_id", "client_message_id", name="ux_consultation_client_message"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    consultation_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consultations.id"), nullable=False, index=True
+    )
+    client_message_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    sender_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    sender_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    content_type: Mapped[str] = mapped_column(String(32), nullable=False, default="text")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    metadata_json: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConsultationShareGrant(Base):
+    __tablename__ = "consultation_share_grants"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    consultation_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consultations.id"), nullable=False, index=True
+    )
+    created_by: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=False, index=True
+    )
+    share_token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
+    permission: Mapped[str] = mapped_column(String(20), nullable=False, default="VIEW")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    max_uses: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    used_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE", index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ConsultationAccessGrant(Base, TimestampMixin):
+    __tablename__ = "consultation_access_grants"
+    __table_args__ = (
+        UniqueConstraint("consultation_id", "consumer_user_id", name="ux_consultation_access"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    consultation_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consultations.id"), nullable=False, index=True
+    )
+    consumer_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=False, index=True
+    )
+    share_grant_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consultation_share_grants.id"), nullable=False, index=True
+    )
+    permission: Mapped[str] = mapped_column(String(20), nullable=False, default="VIEW")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+
+
+class ConsumerConsentRecord(Base):
+    __tablename__ = "consumer_consent_records"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, default=generate_snowflake_id)
+    consumer_user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("consumer_users.id"), nullable=False, index=True
+    )
+    agreement_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    agreement_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    consented_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    withdrawn_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -1,0 +1,7 @@
+page { background: #f4f7f6; color: #18302b; font-size: 30rpx; }
+.page { padding: 32rpx; }
+.card { background: white; border-radius: 24rpx; padding: 32rpx; margin-bottom: 24rpx; box-shadow: 0 8rpx 30rpx rgba(25,70,61,.06); }
+.primary { background: #176b5b; color: white; border-radius: 16rpx; }
+.muted { color: #6f817d; font-size: 24rpx; }
+.warning { background: #fff6e8; color: #8a4b0f; padding: 20rpx; border-radius: 16rpx; }
+input, textarea { background: #f4f7f6; padding: 20rpx; border-radius: 14rpx; box-sizing: border-box; width: 100%; }

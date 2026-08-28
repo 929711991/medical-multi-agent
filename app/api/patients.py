@@ -3,8 +3,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.auth import get_current_doctor
 from app.persistence.database import get_session_factory
 from app.persistence.repositories import PatientRepository
-from app.schemas.patient import PatientCreateRequest, PatientCreateResponse, PatientUpdateRequest
+from app.schemas.patient import (
+    PatientCreateRequest,
+    PatientCreateResponse,
+    PatientUpdateRequest,
+    VisitCreateRequest,
+    VisitResponse,
+)
+from app.schemas.auth import DoctorIdentity
 from app.services.patient_access import PatientAccessService
+from app.services.patient_service import PatientService
 
 router = APIRouter(prefix="/patients", tags=["patients"], dependencies=[Depends(get_current_doctor)])
 
@@ -13,14 +21,12 @@ router = APIRouter(prefix="/patients", tags=["patients"], dependencies=[Depends(
 async def create_patient(payload: PatientCreateRequest) -> PatientCreateResponse:
     """根据前端已校验输入创建沙箱患者记录。"""
     async with get_session_factory()() as session:
-        patient = await PatientRepository(session).create(
-            name=payload.name,
-            birth_date=payload.birth_date,
-            sex=payload.sex,
-            history=payload.history,
-            data_scope="sandbox",
-            source_channel="doctor_web",
-        )
+        try:
+            patient, visit = await PatientService(session).create_patient_with_visit(
+                **payload.model_dump(), data_scope="sandbox", source_channel="doctor_web"
+            )
+        except LookupError as exc:
+            raise HTTPException(status_code=404, detail="未找到或未启用的接诊科室") from exc
     return PatientCreateResponse(
         patient_id=str(patient.id),
         name=patient.display_name,
@@ -29,6 +35,10 @@ async def create_patient(payload: PatientCreateRequest) -> PatientCreateResponse
         history=patient.summary_json.get("history", []),
         data_scope=patient.data_scope,
         source_channel=patient.source_channel,
+        visit_id=str(visit.id),
+        department_code=visit.department_code or payload.department_code,
+        department=visit.department,
+        chief_complaint=visit.chief_complaint,
     )
 
 
@@ -38,32 +48,38 @@ async def list_patients(
     page_size: int = Query(20, ge=1, le=100),
     search: str | None = Query(None, max_length=120),
     sex: str | None = Query(None, max_length=20),
+    doctor: DoctorIdentity = Depends(get_current_doctor),
 ) -> dict:
     """返回经过筛选和分页的患者工作列表。"""
     async with get_session_factory()() as session:
-        return await PatientRepository(session).list(page=page, page_size=page_size, search=search, sex=sex)
+        return await PatientRepository(session).list(
+            page=page, page_size=page_size, search=search, sex=sex,
+            doctor_department=doctor.department,
+        )
 
 
-async def _ensure_patient(session, patient_id: str) -> PatientRepository:
+async def _ensure_patient(
+    session, patient_id: str, doctor_department: str | None = None
+) -> PatientRepository:
     """执行患者访问边界校验并返回受限仓储。"""
-    if not await PatientAccessService(session).can_access_patient(patient_id):
+    if not await PatientAccessService(session).can_access_patient(patient_id, doctor_department):
         raise HTTPException(status_code=404, detail="未找到患者")
     return PatientRepository(session)
 
 
 @router.get("/{patient_id}")
-async def get_patient(patient_id: str) -> dict:
+async def get_patient(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回临床工作区可见的患者摘要。"""
     async with get_session_factory()() as session:
-        repository = await _ensure_patient(session, patient_id)
+        repository = await _ensure_patient(session, patient_id, doctor.department)
         return await repository.summary(patient_id)
 
 
 @router.patch("/{patient_id}")
-async def update_patient(patient_id: str, payload: PatientUpdateRequest) -> dict:
+async def update_patient(patient_id: str, payload: PatientUpdateRequest, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """更新允许编辑的患者人口学和病史字段。"""
     async with get_session_factory()() as session:
-        repository = await _ensure_patient(session, patient_id)
+        repository = await _ensure_patient(session, patient_id, doctor.department)
         patient = await repository.update_patient(patient_id, **payload.model_dump(exclude_unset=True))
         if patient is None:
             raise HTTPException(status_code=404, detail="未找到患者")
@@ -71,10 +87,10 @@ async def update_patient(patient_id: str, payload: PatientUpdateRequest) -> dict
 
 
 @router.get("/{patient_id}/overview")
-async def get_patient_overview(patient_id: str) -> dict:
+async def get_patient_overview(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """为患者概览页聚合近期临床记录。"""
     async with get_session_factory()() as session:
-        repository = await _ensure_patient(session, patient_id)
+        repository = await _ensure_patient(session, patient_id, doctor.department)
         summary = await repository.summary(patient_id)
         visits = await repository.visits(patient_id)
         labs = await repository.labs(patient_id)
@@ -93,35 +109,59 @@ async def get_patient_overview(patient_id: str) -> dict:
 
 
 @router.get("/{patient_id}/visits")
-async def get_visits(patient_id: str) -> dict:
+async def get_visits(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回当前可访问患者的全部就诊记录。"""
     async with get_session_factory()() as session:
-        return await (await _ensure_patient(session, patient_id)).visits(patient_id)
+        return await (await _ensure_patient(session, patient_id, doctor.department)).visits(patient_id)
+
+
+@router.post("/{patient_id}/visits", response_model=VisitResponse, status_code=status.HTTP_201_CREATED)
+async def create_visit(patient_id: str, payload: VisitCreateRequest, doctor: DoctorIdentity = Depends(get_current_doctor)) -> VisitResponse:
+    """为已有患者增加一次接诊，不重复创建患者主档。"""
+    async with get_session_factory()() as session:
+        await _ensure_patient(session, patient_id, doctor.department)
+        try:
+            visit = await PatientService(session).create_visit(
+                patient_id=patient_id, **payload.model_dump()
+            )
+        except LookupError as exc:
+            if str(exc) == "DEPARTMENT_NOT_FOUND":
+                raise HTTPException(status_code=404, detail="未找到或未启用的接诊科室") from exc
+            raise HTTPException(status_code=404, detail="未找到患者") from exc
+        return VisitResponse(
+            id=str(visit.id),
+            patient_id=str(visit.patient_id),
+            visit_time=visit.visit_time,
+            department_code=visit.department_code,
+            department=visit.department,
+            chief_complaint=visit.chief_complaint,
+            record=visit.record_json or {},
+        )
 
 
 @router.get("/{patient_id}/labs")
-async def get_labs(patient_id: str) -> dict:
+async def get_labs(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回当前可访问患者的全部检验结果。"""
     async with get_session_factory()() as session:
-        return await (await _ensure_patient(session, patient_id)).labs(patient_id)
+        return await (await _ensure_patient(session, patient_id, doctor.department)).labs(patient_id)
 
 
 @router.get("/{patient_id}/imaging")
-async def get_imaging(patient_id: str) -> dict:
+async def get_imaging(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回当前可访问患者的全部影像报告。"""
     async with get_session_factory()() as session:
-        return await (await _ensure_patient(session, patient_id)).imaging(patient_id)
+        return await (await _ensure_patient(session, patient_id, doctor.department)).imaging(patient_id)
 
 
 @router.get("/{patient_id}/medications")
-async def get_medications(patient_id: str) -> dict:
+async def get_medications(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回当前可访问患者的全部用药记录。"""
     async with get_session_factory()() as session:
-        return await (await _ensure_patient(session, patient_id)).medications(patient_id)
+        return await (await _ensure_patient(session, patient_id, doctor.department)).medications(patient_id)
 
 
 @router.get("/{patient_id}/allergies")
-async def get_allergies(patient_id: str) -> dict:
+async def get_allergies(patient_id: str, doctor: DoctorIdentity = Depends(get_current_doctor)) -> dict:
     """返回当前可访问患者的全部过敏记录。"""
     async with get_session_factory()() as session:
-        return await (await _ensure_patient(session, patient_id)).allergies(patient_id)
+        return await (await _ensure_patient(session, patient_id, doctor.department)).allergies(patient_id)

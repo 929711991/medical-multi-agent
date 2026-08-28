@@ -56,7 +56,25 @@ class Settings(BaseSettings):
     login_password: str = Field(default="111111", repr=False)
     auth_cookie_secure: bool = False
     auth_session_hours: int = 12
+    wechat_app_id: str | None = None
+    wechat_app_secret: str | None = Field(default=None, repr=False)
+    consumer_auth_secret: str | None = Field(default=None, repr=False)
+    consumer_token_hours: int = Field(default=168, ge=1, le=720)
+    consumer_message_max_length: int = Field(default=4000, ge=100, le=20000)
+    rate_limit_user_per_minute: int = Field(default=30, ge=1)
+    rate_limit_ip_per_minute: int = Field(default=60, ge=1)
+    rate_limit_consultation_per_minute: int = Field(default=20, ge=1)
+    rate_limit_llm_per_hour: int = Field(default=20, ge=1)
+    max_concurrent_ai_analyses: int = Field(default=2, ge=1, le=20)
     snowflake_worker_id: int = Field(default=1, ge=0, le=1023)
+
+    def validate_consumer_auth(self) -> None:
+        if not self.consumer_auth_secret:
+            raise RuntimeError("CONSUMER_AUTH_SECRET_UNAVAILABLE")
+
+    def validate_wechat(self) -> None:
+        if not self.wechat_app_id or not self.wechat_app_secret:
+            raise RuntimeError("WECHAT_CREDENTIALS_UNAVAILABLE")
 
     @property
     def database_url(self) -> str:

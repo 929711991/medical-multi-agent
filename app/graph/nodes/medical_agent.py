@@ -2,7 +2,7 @@ import json
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from app.agents.medical import create_medical_supervisor
+from app.agents.medical import create_consumer_medical_supervisor, create_medical_supervisor
 from app.graph.state import DiagnosisState
 from app.mcp.client import get_mcp_manager
 from app.schemas.diagnosis import DiagnosisResult
@@ -36,6 +36,26 @@ async def load_records_from_mcp(patient_id: str) -> dict[str, Any]:
     return await get_mcp_manager().invoke_structured(
         "get_medical_records", {"patient_id": patient_id}
     )
+
+
+async def run_consumer_medical_supervisor(
+    state: DiagnosisState, patient_context: dict[str, Any]
+) -> DiagnosisResult:
+    """以只读 MCP 权限运行 Consumer MedicalSupervisor。"""
+    tools = await get_mcp_manager().get_tools()
+    agent = create_consumer_medical_supervisor(tools)
+    prompt = {
+        "patient_id": state["patient_id"],
+        "user_description": state["user_query"],
+        "deterministic_risk_level": state["risk_level"],
+        "deterministic_red_flags": state["red_flags"],
+        "prefetched_mcp_context": patient_context,
+    }
+    response = await agent.ainvoke(
+        {"messages": [{"role": "user", "content": json.dumps(prompt, ensure_ascii=False, default=str)}]}
+    )
+    value = response.get("structured_response")
+    return value if isinstance(value, DiagnosisResult) else DiagnosisResult.model_validate(value)
 
 
 def make_medical_node(runner: MedicalRunner | None = None, record_loader: RecordLoader | None = None):

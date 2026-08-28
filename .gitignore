@@ -12,3 +12,5 @@ htmlcov/
 # Frontend dependencies and build output
 /web/node_modules/
 /web/dist/
+/mini-program/node_modules/
+/mini-program/dist/
