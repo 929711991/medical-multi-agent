@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     embedding_base_url: str | None = None
     embedding_api_key: str | None = Field(default=None, repr=False)
     embedding_dimensions: int = 1024
+    embedding_batch_size: int = 10
     rag_top_k: int = 8
     rag_return_k: int = 5
     rag_score_threshold: float | None = None

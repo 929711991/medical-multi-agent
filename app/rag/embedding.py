@@ -29,7 +29,12 @@ async def embed_documents(texts: list[str]) -> list[list[float]]:
     normalized = [item.strip() for item in texts if item.strip()]
     if not normalized:
         return []
-    return await _get_embeddings().aembed_documents(normalized)
+    settings = get_settings()
+    batch_size = min(max(settings.embedding_batch_size, 1), 10)
+    vectors: list[list[float]] = []
+    for start in range(0, len(normalized), batch_size):
+        vectors.extend(await _get_embeddings().aembed_documents(normalized[start : start + batch_size]))
+    return vectors
 
 
 def reset_embedding_client() -> None:
