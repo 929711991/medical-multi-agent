@@ -14,6 +14,8 @@ def _get_embeddings() -> OpenAIEmbeddings:
         model=settings.embedding_model,
         base_url=settings.embedding_base_url,
         api_key=credential,
+        dimensions=settings.embedding_dimensions,
+        check_embedding_ctx_length=False,
     )
 
 

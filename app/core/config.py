@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     embedding_model: str | None = None
     embedding_base_url: str | None = None
     embedding_api_key: str | None = Field(default=None, repr=False)
+    embedding_dimensions: int = 1024
     rag_top_k: int = 8
     rag_return_k: int = 5
     rag_score_threshold: float | None = None
@@ -79,8 +80,10 @@ class Settings(BaseSettings):
             if self.rag_required:
                 raise RuntimeError("RAG_REQUIRED=true 时不允许关闭 RAG")
             return
-        if not self.embedding_model or not self.embedding_api_key:
-            raise RuntimeError("启用正式 RAG 必须配置 EMBEDDING_MODEL 和 EMBEDDING_API_KEY")
+        if not self.embedding_model or not self.embedding_base_url or not self.embedding_api_key:
+            raise RuntimeError(
+                "启用正式 RAG 必须配置 EMBEDDING_MODEL、EMBEDDING_BASE_URL 和 EMBEDDING_API_KEY"
+            )
 
 
 @lru_cache
